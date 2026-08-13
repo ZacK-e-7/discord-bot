@@ -8,87 +8,87 @@ const {
   AuditLogEvent 
 } = require('discord.js');
 
-// ================= EXPRESS WEB SUNUCUSU (7/24 & DOĞRULAMA PORTALI) ================= //
+// ================= EXPRESS WEB SUNUCUSU ================= //
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
-// Render Health Check
 app.get('/', (req, res) => {
   res.send('🤖 Discord Botu ve Web Portalı 7/24 Aktif!');
 });
 
-// Valorant Rank Çekici (Çift Yedekli API Sistemi)
+// Cloudflare Engelini Aşan Valorant Veri Çekici
 async function getValorantData(name, tag) {
-  // 1. Birinci Servis (HenrikDev API)
+  // Gerçek Chrome Tarayıcı Kimliği (Cloudflare Engelini Aşar)
+  const browserHeaders = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7'
+  };
+
+  // 1. SERVİS: Kyroskoh API
   try {
-    const res = await fetch(`https://api.henrikdev.xyz/valorant/v1/mmr/eu/${encodeURIComponent(name)}/${encodeURIComponent(tag)}`);
+    const url = `https://api.kyroskoh.xyz/valorant/v1/mmr/eu/${encodeURIComponent(name)}/${encodeURIComponent(tag)}`;
+    const res = await fetch(url, { headers: browserHeaders });
+    if (res.ok) {
+      const text = await res.text();
+      console.log('Kyroskoh Yanıtı:', text);
+      if (text && !text.toLowerCase().includes('error') && !text.toLowerCase().includes('cannot find')) {
+        const parts = text.split('-');
+        const rawRank = parts[0]?.trim() || 'Unranked';
+        const rrMatch = text.match(/(\d+)\s*RR/i);
+        const rr = rrMatch ? parseInt(rrMatch[1]) : 0;
+        return { rawRank, rr };
+      }
+    }
+  } catch (e) {
+    console.error('1. API Hatası:', e);
+  }
+
+  // 2. SERVİS: Vaccie API
+  try {
+    const url = `https://vaccie.pythonanywhere.com/mmr/${encodeURIComponent(name)}/${encodeURIComponent(tag)}/eu`;
+    const res = await fetch(url, { headers: browserHeaders });
+    if (res.ok) {
+      const text = await res.text();
+      console.log('Vaccie Yanıtı:', text);
+      if (text && !text.toLowerCase().includes('error')) {
+        const parts = text.split(',');
+        const rawRank = parts[0]?.trim() || 'Unranked';
+        const rrMatch = text.match(/RR:\s*(-?\d+)/i);
+        const rr = rrMatch ? parseInt(rrMatch[1]) : 0;
+        return { rawRank, rr };
+      }
+    }
+  } catch (e) {
+    console.error('2. API Hatası:', e);
+  }
+
+  // 3. SERVİS: HenrikDev API
+  try {
+    const url = `https://api.henrikdev.xyz/valorant/v1/mmr/eu/${encodeURIComponent(name)}/${encodeURIComponent(tag)}`;
+    const res = await fetch(url, { headers: browserHeaders });
     if (res.ok) {
       const json = await res.json();
       if (json && json.data && json.data.currenttierpatched) {
         return {
           rawRank: json.data.currenttierpatched,
-          rr: json.data.ranking_in_tier || 0,
-          change: json.data.mmr_change_to_last_game || 0,
-          icon: json.data.images?.large || null
+          rr: json.data.ranking_in_tier || 0
         };
       }
     }
   } catch (e) {
-    console.log('1. API yanıt vermedi, yedek API deneniyor...');
+    console.error('3. API Hatası:', e);
   }
-
-  // 2. İkinci Yedek Servis (Vaccie API - Key Gerektirmez)
-  try {
-    const res = await fetch(`https://vaccie.pythonanywhere.com/mmr/${encodeURIComponent(name)}/${encodeURIComponent(tag)}/eu`);
-    if (res.ok) {
-      const text = await res.text();
-      if (text && !text.toLowerCase().includes('error') && !text.toLowerCase().includes('not found')) {
-        const parts = text.split(',');
-        const rawRank = parts[0]?.trim() || 'Unranked';
-        const rrMatch = text.match(/RR:\s*(-?\d+)/i);
-        const rr = rrMatch ? parseInt(rrMatch[1]) : 0;
-        return {
-          rawRank: rawRank,
-          rr: rr,
-          change: 0,
-          icon: null
-        };
-      }
-    }
-  } catch (e) {
-    console.log('2. API yanıt vermedi, 3. yedek deneniyor...');
-  }
-
-  // 3. Üçüncü Yedek Servis (Kyroskoh API)
-  try {
-    const res = await fetch(`https://api.kyroskoh.xyz/valorant/v1/mmr/eu/${encodeURIComponent(name)}/${encodeURIComponent(tag)}?show=combo&display=0`);
-    if (res.ok) {
-      const text = await res.text();
-      if (text && !text.toLowerCase().includes('error') && !text.toLowerCase().includes('there is an error')) {
-        const parts = text.split('-');
-        const rawRank = parts[0]?.trim() || 'Unranked';
-        const rrMatch = text.match(/(\d+)RR/i);
-        const rr = rrMatch ? parseInt(rrMatch[1]) : 0;
-        return {
-          rawRank: rawRank,
-          rr: rr,
-          change: 0,
-          icon: null
-        };
-      }
-    }
-  } catch (e) {}
 
   return null;
 }
 
-// Web Doğrulama Portalı Görsel Sayfası
+// Web Doğrulama Sayfası
 app.get('/verify', (req, res) => {
   const { uid, guild } = req.query;
-  if (!uid || !guild) return res.status(400).send('❌ Geçersiz veya eksik doğrulama bağlantısı!');
+  if (!uid || !guild) return res.status(400).send('❌ Geçersiz bağlantı!');
 
   res.send(`
     <!DOCTYPE html>
@@ -97,19 +97,18 @@ app.get('/verify', (req, res) => {
       <meta charset="UTF-8">
       <title>Valorant Tracker Doğrulama Portalı</title>
       <style>
-        body { background-color: #0f1923; color: #ece8e1; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        .card { background: #1f2326; padding: 40px; border-radius: 12px; border-top: 5px solid #ff4655; box-shadow: 0 10px 30px rgba(0,0,0,0.5); text-align: center; max-width: 400px; width: 100%; }
+        body { background-color: #0f1923; color: #ece8e1; font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .card { background: #1f2326; padding: 40px; border-radius: 12px; border-top: 5px solid #ff4655; text-align: center; max-width: 400px; width: 100%; }
         h2 { color: #ff4655; margin-bottom: 10px; }
-        p { font-size: 14px; color: #768079; margin-bottom: 25px; }
-        input { width: 100%; padding: 12px; margin-bottom: 15px; border-radius: 6px; border: 1px solid #36393f; background: #0f1923; color: white; box-sizing: border-box; font-size: 16px; text-align: center; }
-        button { width: 100%; padding: 14px; background: #ff4655; border: none; color: white; font-weight: bold; border-radius: 6px; cursor: pointer; font-size: 16px; transition: 0.2s; }
+        input { width: 100%; padding: 12px; margin-bottom: 15px; border-radius: 6px; border: 1px solid #36393f; background: #0f1923; color: white; text-align: center; font-size: 16px; box-sizing: border-box; }
+        button { width: 100%; padding: 14px; background: #ff4655; border: none; color: white; font-weight: bold; border-radius: 6px; cursor: pointer; font-size: 16px; }
         button:hover { background: #e03e4d; }
       </style>
     </head>
     <body>
       <div class="card">
         <h2>VALORANT DOĞRULAMA</h2>
-        <p>Riot Hesabınızı Discord Profilinizle Eşleştirin</p>
+        <p style="color:#768079;">Riot Hesabınızı Discord Profilinizle Eşleştirin</p>
         <form action="/verify" method="POST">
           <input type="hidden" name="uid" value="${uid}">
           <input type="hidden" name="guild" value="${guild}">
@@ -122,7 +121,7 @@ app.get('/verify', (req, res) => {
   `);
 });
 
-// Web Formu Gönderildiğinde Çalışacak İşlem
+// Form Onayı
 app.post('/verify', async (req, res) => {
   const { uid, guild, riotId } = req.body;
 
@@ -139,13 +138,12 @@ app.post('/verify', async (req, res) => {
     const member = await targetGuild.members.fetch(uid).catch(() => null);
     if (!member) return res.send('<h3>❌ Kullanıcı sunucuda bulunamadı!</h3>');
 
-    // Yedekli Valorant API Verisini Çek
     const vData = await getValorantData(name, tag);
 
     if (!vData) {
       return res.send(`
         <body style="background:#0f1923; color:white; font-family:sans-serif; text-align:center; padding-top:100px;">
-          <h2 style="color:#ff4655;">❌ Kullanıcı Bulunamadı veya Dereceli Geçmişi Yok!</h2>
+          <h2 style="color:#ff4655;">❌ Kullanıcı Bulunamadı!</h2>
           <p>Lütfen <strong>${name}#${tag}</strong> adını doğru yazdığınızdan ve bu sezonda en az 1 dereceli maç oynadığınızdan emin olun.</p>
         </body>
       `);
@@ -155,7 +153,7 @@ app.post('/verify', async (req, res) => {
     const mainTier = rawRank.split(' ')[0];
     const trRank = rankTranslation[mainTier] || 'Derecesiz';
 
-    // Eski Valorant rollerini temizle
+    // Eski rolleri sil
     for (const rankName of valorantRanks) {
       const oldRole = targetGuild.roles.cache.find(r => r.name.toLowerCase() === rankName.toLowerCase());
       if (oldRole && member.roles.cache.has(oldRole.id)) {
@@ -163,22 +161,19 @@ app.post('/verify', async (req, res) => {
       }
     }
 
-    // Yeni Rolü Bul veya Oluştur
+    // Yeni rolü ver
     let rankRole = targetGuild.roles.cache.find(r => r.name.toLowerCase() === trRank.toLowerCase());
     if (!rankRole) {
       rankRole = await targetGuild.roles.create({
         name: trRank,
         color: getRankColor(mainTier),
-        reason: 'Web Portalı Otomatik Rank Rolü'
-      }).catch(err => {
-        console.error('Rol oluşturulamadı:', err);
-        return null;
-      });
+        reason: 'Valorant Rank Rolü'
+      }).catch(() => null);
     }
 
     if (rankRole) {
       await member.roles.add(rankRole).catch(err => {
-        console.error('Rol verilemedi (Discord rol sıralamasını kontrol edin):', err);
+        console.error('Rol verme hatası (Discord Rol Sıralamasını Kontrol Edin):', err);
       });
     }
 
@@ -187,20 +182,18 @@ app.post('/verify', async (req, res) => {
         <h1 style="color:#57F287;">🎉 TEBRİKLER!</h1>
         <h2>${name}#${tag} hesabı başarıyla doğrulandı.</h2>
         <p>Mevcut Rank: <strong>${rawRank}</strong> (${vData.rr} RR)</p>
-        <p>Discord sunucusundaki <strong>${trRank}</strong> rolünüz tanımlandı. Bu sekmeyi kapatabilirsiniz.</p>
+        <p>Discord sunucusundaki <strong>${trRank}</strong> rolünüz tanımlandı!</p>
       </body>
     `);
   } catch (err) {
     console.error(err);
-    res.send('<h3>❌ Doğrulama sırasında bir hata oluştu.</h3>');
+    res.send('<h3>❌ Bir hata oluştu.</h3>');
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`🌐 Web Portalı ${PORT} portunda başarıyla başlatıldı!`);
-});
+app.listen(PORT, () => console.log(`🌐 Port ${PORT} aktif`));
 
-// ================= DISCORD BOTU İŞLEMLERİ ================= //
+// ================= DISCORD BOTU ================= //
 
 const client = new Client({
   intents: [
@@ -258,8 +251,7 @@ client.once('ready', () => {
   client.user.setActivity('!yardım | Web Portal & Güvenlik', { type: 3 });
 });
 
-// ================= BAN & TIMEOUT LOGLARI ================= //
-
+// Ban & Timeout Log
 client.on('guildBanAdd', async (ban) => {
   const logChannel = getLogChannel(ban.guild);
   if (!logChannel) return;
@@ -315,8 +307,7 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
   }
 });
 
-// ================= HOŞ GELDİN & OTOMATİK ROL ================= //
-
+// Hoş Geldin
 client.on('guildMemberAdd', async (member) => {
   const autoRole = member.guild.roles.cache.find(role => 
     ['kayıtlı üye', 'kayitli uye', 'üye', 'uye'].some(k => role.name.toLowerCase().includes(k))
@@ -335,8 +326,7 @@ client.on('guildMemberAdd', async (member) => {
   }
 });
 
-// ================= KORUMA & KOMUTLAR ================= //
-
+// Mesaj Dinleyici
 client.on('messageCreate', async (message) => {
   if (message.author.bot || !message.guild) return;
   const content = message.content.toLowerCase();
@@ -379,7 +369,7 @@ client.on('messageCreate', async (message) => {
     return;
   }
 
-  // WEB DOĞRULAMA LİNKİ KOMUTU (!v-rank / !tracker / !doğrula)
+  // !v-rank Komutu
   if (content === '!v-rank' || content === '!tracker' || content === '!doğrula') {
     const serverUrl = process.env.SERVER_URL || `http://localhost:${PORT}`;
     const verifyUrl = `${serverUrl}/verify?uid=${message.author.id}&guild=${message.guild.id}`;
@@ -397,7 +387,7 @@ client.on('messageCreate', async (message) => {
     return message.reply({ embeds: [verifyEmbed] });
   }
 
-  // Kurallar Komutu
+  // !kurallar Komutu
   if (content === '!kurallar') {
     await message.delete().catch(() => {});
     const kurallarEmbed = new EmbedBuilder()
@@ -419,7 +409,7 @@ client.on('messageCreate', async (message) => {
     return message.reply(`Aleykümselam ${message.author}! Hoş geldin 👋`);
   }
 
-  // Sil Komutu
+  // !sil Komutu
   if (content.startsWith('!sil')) {
     if (!isAuthorized(message.member)) return message.reply('❌ Yetkin yok.');
     const miktar = parseInt(message.content.split(' ')[1]);
