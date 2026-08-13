@@ -36,15 +36,15 @@ const client = new Client({
 // Link Uyarıları Hafızası
 const linkWarnings = new Map();
 
-// Seviye / XP Sistem Hafızası (Kullanıcı ID -> { xp, level, lastXpTime })
+// Seviye / XP Sistem Hafızası
 const userLevelMap = new Map();
 
 // Seviye İçin Gereken XP Hesaplama Fonksiyonu
 function getNeededXP(level) {
-  return 50 * Math.pow(level, 2) + 50 * level; // Seviye arttıkça gereken XP artar
+  return 50 * Math.pow(level, 2) + 50 * level;
 }
 
-// Görsel İlerleme Çubuğu (Progress Bar) Fonksiyonu
+// Görsel İlerleme Çubuğu (Progress Bar)
 function createProgressBar(currentXP, neededXP) {
   const percentage = Math.min(1, Math.max(0, currentXP / neededXP));
   const totalBars = 10;
@@ -60,26 +60,32 @@ const kufurler = [
   'orospu', 'kahpe', 'puşt', 'pust', 'ipne', 'ibne', 'göt', 'got', 'daşşak'
 ];
 
-// Mod Log kanalını bulan fonksiyon
 function getLogChannel(guild) {
   if (!guild) return null;
   return guild.channels.cache.find(c => c.name.includes('log') || c.name.includes('mod-log'));
 }
 
-// Hoş Geldin kanalını bulan fonksiyon
 function getWelcomeChannel(guild) {
   if (!guild) return null;
   return guild.channels.cache.find(c => 
-    c.name.includes('hoşgeldin') || 
-    c.name.includes('hosgeldin') || 
-    c.name.includes('hoşgeldiniz') || 
-    c.name.includes('hosgeldiniz') || 
-    c.name.includes('welcome') || 
-    c.name.includes('giriş-çıkış')
+    c.name.includes('hoşgeldin') || c.name.includes('hosgeldin') || 
+    c.name.includes('hoşgeldiniz') || c.name.includes('hosgeldiniz') || 
+    c.name.includes('welcome') || c.name.includes('giriş-çıkış')
   );
 }
 
-// Yetkili / Moderatör Kontrolü
+// Level Bilgi Kanalını Bulucu
+function getLevelChannel(guild) {
+  if (!guild) return null;
+  return guild.channels.cache.find(c => 
+    c.name.includes('level-bilgi') || 
+    c.name.includes('levelbilgi') || 
+    c.name.includes('seviye-bilgi') || 
+    c.name.includes('seviyebilgi') ||
+    c.name.includes('level-bilgisi')
+  );
+}
+
 function isAuthorized(member) {
   if (!member) return false;
   if (member.permissions.has(PermissionFlagsBits.Administrator)) return true;
@@ -95,45 +101,35 @@ client.once('ready', () => {
   client.user.setActivity('!yardım | Seviye & Koruma', { type: 3 });
 });
 
-// ================= BAN LOG SİSTEMİ ================= //
+// ================= BAN & TIMEOUT LOGLARI ================= //
 
 client.on('guildBanAdd', async (ban) => {
   const logChannel = getLogChannel(ban.guild);
   if (!logChannel) return;
-
   let executor = 'Bilinmiyor / Otomatik Sistem';
   let reason = 'Sebep Belirtilmedi';
 
   try {
-    const fetchedLogs = await ban.guild.fetchAuditLogs({
-      limit: 1,
-      type: AuditLogEvent.MemberBanAdd,
-    });
+    const fetchedLogs = await ban.guild.fetchAuditLogs({ limit: 1, type: AuditLogEvent.MemberBanAdd });
     const banLog = fetchedLogs.entries.first();
-
     if (banLog && banLog.target.id === ban.user.id) {
       if (banLog.executor) executor = `${banLog.executor} (${banLog.executor.tag})`;
       if (banLog.reason) reason = banLog.reason;
     }
-  } catch (err) {
-    console.error('Ban Audit Log çekilemedi:', err);
-  }
+  } catch (err) {}
 
   const embed = new EmbedBuilder()
     .setColor('#992D22')
     .setTitle('🔨 Kullanıcı Yasaklandı (Ban)')
     .addFields(
-      { name: 'Yasaklanan Kullanıcı', value: `${ban.user} (${ban.user.tag})`, inline: true },
-      { name: 'Yasaklayan Yetkili / Sistem', value: executor, inline: true },
-      { name: 'Yasaklanma Sebebi', value: reason }
+      { name: 'Yasaklanan', value: `${ban.user} (${ban.user.tag})`, inline: true },
+      { name: 'Yetkili', value: executor, inline: true },
+      { name: 'Sebep', value: reason }
     )
-    .setFooter({ text: `Kullanıcı ID: ${ban.user.id}` })
     .setTimestamp();
 
   logChannel.send({ embeds: [embed] }).catch(() => {});
 });
-
-// ================= TIMEOUT LOG SİSTEMİ ================= //
 
 client.on('guildMemberUpdate', async (oldMember, newMember) => {
   const logChannel = getLogChannel(newMember.guild);
@@ -141,89 +137,47 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
 
   if (!oldMember.isCommunicationDisabled() && newMember.isCommunicationDisabled()) {
     const timeoutUntil = newMember.communicationDisabledUntilTimestamp;
-    const durationMs = timeoutUntil - Date.now();
-    const minutes = Math.ceil(durationMs / (1000 * 60));
-
+    const minutes = Math.ceil((timeoutUntil - Date.now()) / (1000 * 60));
     let executor = 'Bilinmiyor / Otomatik Sistem';
     try {
-      const fetchedLogs = await newMember.guild.fetchAuditLogs({
-        limit: 1,
-        type: AuditLogEvent.MemberUpdate,
-      });
+      const fetchedLogs = await newMember.guild.fetchAuditLogs({ limit: 1, type: AuditLogEvent.MemberUpdate });
       const timeoutLog = fetchedLogs.entries.first();
       if (timeoutLog && timeoutLog.target.id === newMember.id && timeoutLog.executor) {
         executor = `${timeoutLog.executor} (${timeoutLog.executor.tag})`;
       }
-    } catch (err) {
-      console.error('Audit Log çekilemedi:', err);
-    }
+    } catch (err) {}
 
     const embed = new EmbedBuilder()
       .setColor('#E67E22')
       .setTitle('⏰ Kullanıcıya Timeout Atıldı')
       .addFields(
-        { name: 'Susturulan Kullanıcı', value: `${newMember.user} (${newMember.user.tag})`, inline: true },
-        { name: 'Susturan Yetkili / Sistem', value: executor, inline: true },
-        { name: 'Süre / Bitiş', value: `Yaklaşık **${minutes} dakika** (<t:${Math.floor(timeoutUntil / 1000)}:R>)` }
+        { name: 'Susturulan', value: `${newMember.user}`, inline: true },
+        { name: 'Yetkili', value: executor, inline: true },
+        { name: 'Süre', value: `~${minutes} dk (<t:${Math.floor(timeoutUntil / 1000)}:R>)` }
       )
-      .setFooter({ text: `Kullanıcı ID: ${newMember.id}` })
-      .setTimestamp();
-
-    return logChannel.send({ embeds: [embed] }).catch(() => {});
-  }
-
-  if (oldMember.isCommunicationDisabled() && !newMember.isCommunicationDisabled()) {
-    const embed = new EmbedBuilder()
-      .setColor('#2ECC71')
-      .setTitle('🔊 Timeout Kaldırıldı')
-      .setDescription(`${newMember.user} (${newMember.user.tag}) üzerindeki timeout süresi doldu veya kaldırıldı.`)
       .setTimestamp();
 
     return logChannel.send({ embeds: [embed] }).catch(() => {});
   }
 });
 
-// ================= HOŞ GELDİN & OTOMATİK ROL SİSTEMİ ================= //
+// ================= HOŞ GELDİN & OTOMATİK ROL ================= //
 
 client.on('guildMemberAdd', async (member) => {
   const autoRole = member.guild.roles.cache.find(role => 
-    role.name.toLowerCase().includes('kayıtlı üye') ||
-    role.name.toLowerCase().includes('kayitli uye') ||
-    role.name.toLowerCase().includes('üye') ||
-    role.name.toLowerCase().includes('uye')
+    ['kayıtlı üye', 'kayitli uye', 'üye', 'uye'].some(k => role.name.toLowerCase().includes(k))
   );
-
-  if (autoRole) {
-    await member.roles.add(autoRole).catch(() => {});
-  }
+  if (autoRole) await member.roles.add(autoRole).catch(() => {});
 
   const welcomeChannel = getWelcomeChannel(member.guild);
   if (welcomeChannel) {
     const welcomeEmbed = new EmbedBuilder()
       .setColor('#57F287')
       .setTitle(`🎉 Sunucumuza Hoş Geldin ${member.user.username}!`)
-      .setDescription(`Aramıza katıldığın için çok mutluyuz ${member}! 👋\n\n🏰 **${member.guild.name}** sunucusunda seninle birlikte **${member.guild.memberCount}** üye olduk!${autoRole ? `\n\n✅ **${autoRole.name}** rolün otomatik tanımlandı.` : ''}`)
-      .setThumbnail(member.user.displayAvatarURL({ dynamic: true, size: 256 }))
-      .addFields({
-        name: '🛡️ Hesap Oluşturulma Tarihi',
-        value: `<t:${Math.floor(member.user.createdTimestamp / 1000)}:R>`,
-        inline: true
-      })
-      .setFooter({ text: 'Keyifli vakit geçirmeni dileriz!' })
+      .setDescription(`Aramıza katıldığın için mutluyuz ${member}! 👋\n🏰 **${member.guild.name}** sunucusunda seninle birlikte **${member.guild.memberCount}** kişi olduk!`)
+      .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
       .setTimestamp();
-
     welcomeChannel.send({ embeds: [welcomeEmbed] }).catch(() => {});
-  }
-
-  const logChannel = getLogChannel(member.guild);
-  if (logChannel) {
-    const logEmbed = new EmbedBuilder()
-      .setColor('#57F287')
-      .setTitle('📥 Sunucuya Biri Katıldı')
-      .setDescription(`${member.user} (${member.user.tag}) katıldı.${autoRole ? `\n🏷️ **Otomatik Rol:** ${autoRole.name}` : ''}\n**Hesap Yaşı:** <t:${Math.floor(member.user.createdTimestamp / 1000)}:R>`)
-      .setTimestamp();
-
-    logChannel.send({ embeds: [logEmbed] }).catch(() => {});
   }
 });
 
@@ -234,21 +188,9 @@ client.on('guildMemberRemove', (member) => {
       .setColor('#ED4245')
       .setTitle(`📤 Görüşmek Üzere ${member.user.username}...`)
       .setDescription(`${member.user.tag} aramızdan ayrıldı. Kalan üye sayısı: **${member.guild.memberCount}**`)
-      .setThumbnail(member.user.displayAvatarURL({ dynamic: true, size: 256 }))
+      .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
       .setTimestamp();
-
     welcomeChannel.send({ embeds: [leaveEmbed] }).catch(() => {});
-  }
-
-  const logChannel = getLogChannel(member.guild);
-  if (logChannel) {
-    const logEmbed = new EmbedBuilder()
-      .setColor('#ED4245')
-      .setTitle('📤 Sunucudan Biri Ayrıldı')
-      .setDescription(`${member.user} (${member.user.tag}) ayrıldı.`)
-      .setTimestamp();
-
-    logChannel.send({ embeds: [logEmbed] }).catch(() => {});
   }
 });
 
@@ -260,14 +202,9 @@ client.on('messageCreate', async (message) => {
   const content = message.content.toLowerCase();
   const userKey = `${message.guild.id}-${message.author.id}`;
 
-  // 1. KÜFÜR ENGELİ (Yetkililer muaf)
+  // 1. KÜFÜR ENGELİ
   if (!isAuthorized(message.member)) {
-    const kufurVar = kufurler.some(kufur => {
-      const regex = new RegExp(`\\b${kufur}\\b`, 'i');
-      return regex.test(content) || content.includes(kufur);
-    });
-
-    if (kufurVar) {
+    if (kufurler.some(k => content.includes(k))) {
       await message.delete().catch(() => {});
       const uyarimsg = await message.channel.send(`⚠️ ${message.author}, bu sunucuda **küfürlü konuşmak yasaktır!**`);
       setTimeout(() => uyarimsg.delete().catch(() => {}), 4000);
@@ -275,36 +212,28 @@ client.on('messageCreate', async (message) => {
     }
   }
 
-  // 2. KADEMELİ LİNK ENGELİ (Yetkililer muaf)
+  // 2. LİNK ENGELİ
   const linkRegex = /(https?:\/\/[^\s]+)|(www\.[^\s]+)|(discord\.(gg|io|me|li)\/[^\s]+)/i;
   if (!isAuthorized(message.member) && linkRegex.test(message.content)) {
     await message.delete().catch(() => {});
-
     let warnings = (linkWarnings.get(userKey) || 0) + 1;
     linkWarnings.set(userKey, warnings);
 
     if (warnings === 1) {
-      const msg = await message.channel.send(`⚠️ ${message.author}, **bu sunucuda link paylaşmak yasaktır!** (Uyarı: 1/5)`);
+      const msg = await message.channel.send(`⚠️ ${message.author}, **link paylaşmak yasaktır!** (Uyarı: 1/5)`);
       setTimeout(() => msg.delete().catch(() => {}), 5000);
-    } 
-    else if (warnings === 2) {
-      await message.member.timeout(5 * 60 * 1000, 'Link paylaşımı (2. Uyarı)').catch(() => {});
-      const msg = await message.channel.send(`⚠️ ${message.author}, defalarca link paylaştığın için **5 dakika timeout** atıldı! (Uyarı: 2/5)`);
-      setTimeout(() => msg.delete().catch(() => {}), 6000);
-    } 
-    else if (warnings === 3) {
-      await message.member.timeout(24 * 60 * 60 * 1000, 'Link paylaşımı (3. Uyarı)').catch(() => {});
-      const msg = await message.channel.send(`⚠️ ${message.author}, link paylaşmaya devam ettiğin için **1 gün timeout** atıldı! (Uyarı: 3/5)`);
-      setTimeout(() => msg.delete().catch(() => {}), 6000);
-    } 
-    else if (warnings === 4) {
-      await message.member.timeout(7 * 24 * 60 * 60 * 1000, 'Link paylaşımı (4. Uyarı)').catch(() => {});
-      const msg = await message.channel.send(`🚨 ${message.author}, link paylaşımına devam ettiğin için **1 hafta timeout** atıldı! Son uyarın! (Uyarı: 4/5)`);
-      setTimeout(() => msg.delete().catch(() => {}), 6000);
-    } 
-    else if (warnings >= 5) {
-      await message.member.ban({ reason: '5 kez link paylaşımı yapıldığı için otomatik banlandı.' }).catch(() => {});
-      message.channel.send(`🔨 ${message.author.tag}, 5 kez üst üste link paylaştığı için **sunucudan banlandı!**`);
+    } else if (warnings === 2) {
+      await message.member.timeout(5 * 60 * 1000).catch(() => {});
+      message.channel.send(`⚠️ ${message.author}, link paylaşımından **5 dk timeout** aldı! (Uyarı: 2/5)`);
+    } else if (warnings === 3) {
+      await message.member.timeout(24 * 60 * 60 * 1000).catch(() => {});
+      message.channel.send(`⚠️ ${message.author}, link paylaşımından **1 gün timeout** aldı! (Uyarı: 3/5)`);
+    } else if (warnings === 4) {
+      await message.member.timeout(7 * 24 * 60 * 60 * 1000).catch(() => {});
+      message.channel.send(`🚨 ${message.author}, link paylaşımından **1 hafta timeout** aldı! (Uyarı: 4/5)`);
+    } else if (warnings >= 5) {
+      await message.member.ban({ reason: '5 kez link paylaşımı' }).catch(() => {});
+      message.channel.send(`🔨 ${message.author.tag}, 5 kez link paylaştığı için **banlandı!**`);
       linkWarnings.delete(userKey);
     }
     return;
@@ -317,13 +246,13 @@ client.on('messageCreate', async (message) => {
 
     // 60 Saniye Cooldown Kontrolü (Spam Engeli)
     if (now - userData.lastXpTime >= 60000) {
-      const earnedXP = Math.floor(Math.random() * 11) + 15; // 15-25 arası rastgele XP
+      const earnedXP = Math.floor(Math.random() * 11) + 15; // 15-25 XP
       userData.xp += earnedXP;
       userData.lastXpTime = now;
 
       const neededXP = getNeededXP(userData.level);
 
-      // Seviye Atlama Kontrolü
+      // Seviye Atlama Duyurusu -> Doğrudan #level-bilgi kanalına gider
       if (userData.xp >= neededXP) {
         userData.level += 1;
 
@@ -334,7 +263,8 @@ client.on('messageCreate', async (message) => {
           .setThumbnail(message.author.displayAvatarURL({ dynamic: true }))
           .setTimestamp();
 
-        message.channel.send({ embeds: [levelUpEmbed] }).catch(() => {});
+        const levelChannel = getLevelChannel(message.guild) || message.channel;
+        levelChannel.send({ embeds: [levelUpEmbed] }).catch(() => {});
       }
 
       userLevelMap.set(userKey, userData);
@@ -343,178 +273,129 @@ client.on('messageCreate', async (message) => {
 
   // ================= KOMUTLAR ================= //
 
-  // 📈 SEVİYE / RANK KOMUTU (!seviye / !level / !rank)
-  if (content === '!seviye' || content === '!level' || content === '!rank' || content.startsWith('!seviye ') || content.startsWith('!level ') || content.startsWith('!rank ')) {
-    const targetUser = message.mentions.users.first() || message.author;
-    const targetKey = `${message.guild.id}-${targetUser.id}`;
-    const userData = userLevelMap.get(targetKey) || { xp: 0, level: 1 };
-    const neededXP = getNeededXP(userData.level);
+  // 📈 SEVİYE / RANK KOMUTLARI (Sadece #level-bilgi kanalında çalışır)
+  if (
+    content === '!seviye' || content === '!level' || content === '!rank' || content.startsWith('!seviye ') || content.startsWith('!level ') || content.startsWith('!rank ') ||
+    content === '!liderlik' || content === '!top'
+  ) {
+    const channelName = message.channel.name.toLowerCase();
+    const isLevelChannel = ['level-bilgi', 'levelbilgi', 'seviye-bilgi', 'seviyebilgi', 'level-bilgisi'].some(k => channelName.includes(k));
 
-    const levelEmbed = new EmbedBuilder()
-      .setColor('#5865F2')
-      .setAuthor({ name: `${targetUser.username} • Seviye Kartı`, iconURL: targetUser.displayAvatarURL({ dynamic: true }) })
-      .setThumbnail(targetUser.displayAvatarURL({ dynamic: true, size: 256 }))
-      .addFields(
-        { name: '🏆 Seviye', value: `**${userData.level}**`, inline: true },
-        { name: '⭐ Toplam XP', value: `**${userData.xp}** / ${neededXP} XP`, inline: true },
-        { name: '📊 İlerleme Durumu', value: createProgressBar(userData.xp, neededXP), inline: false }
-      )
-      .setFooter({ text: 'Sohbet ederek XP kazanabilirsiniz!' })
-      .setTimestamp();
-
-    return message.reply({ embeds: [levelEmbed] });
-  }
-
-  // 🏆 LİDERLİK TABLOSU KOMUTU (!liderlik / !top)
-  if (content === '!liderlik' || content === '!top') {
-    // Sunucudaki kullanıcıları filtrele ve sırala
-    const guildUsers = [];
-    userLevelMap.forEach((data, key) => {
-      if (key.startsWith(`${message.guild.id}-`)) {
-        const userId = key.split('-')[1];
-        guildUsers.push({ userId, level: data.level, xp: data.xp });
-      }
-    });
-
-    guildUsers.sort((a, b) => b.level - a.level || b.xp - a.xp);
-
-    const top10 = guildUsers.slice(0, 10);
-    let description = '';
-
-    if (top10.length === 0) {
-      description = 'Henüz kimse XP kazanmadı. Sohbet etmeye başla!';
-    } else {
-      top10.forEach((user, index) => {
-        const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '👤';
-        description += `${medal} **${index + 1}.** <@${user.userId}> — **Seviye ${user.level}** (${user.xp} XP)\n`;
-      });
+    if (!isLevelChannel) {
+      const warnMsg = await message.reply('⚠️ Seviye komutlarını sadece **#level-bilgi** kanalında kullanabilirsin!');
+      setTimeout(() => warnMsg.delete().catch(() => {}), 5000);
+      return;
     }
 
-    const leaderboardEmbed = new EmbedBuilder()
-      .setColor('#FFD700')
-      .setTitle(`🏆 ${message.guild.name} • Seviye Liderlik Tablosu`)
-      .setDescription(description)
-      .setFooter({ text: 'En çok sohbet eden üyeler sıralanır.' })
-      .setTimestamp();
+    // !seviye / !level / !rank
+    if (content === '!seviye' || content === '!level' || content === '!rank' || content.startsWith('!seviye ') || content.startsWith('!level ') || content.startsWith('!rank ')) {
+      const targetUser = message.mentions.users.first() || message.author;
+      const targetKey = `${message.guild.id}-${targetUser.id}`;
+      const userData = userLevelMap.get(targetKey) || { xp: 0, level: 1 };
+      const neededXP = getNeededXP(userData.level);
 
-    return message.reply({ embeds: [leaderboardEmbed] });
+      const levelEmbed = new EmbedBuilder()
+        .setColor('#5865F2')
+        .setAuthor({ name: `${targetUser.username} • Seviye Kartı`, iconURL: targetUser.displayAvatarURL({ dynamic: true }) })
+        .setThumbnail(targetUser.displayAvatarURL({ dynamic: true, size: 256 }))
+        .addFields(
+          { name: '🏆 Seviye', value: `**${userData.level}**`, inline: true },
+          { name: '⭐ Toplam XP', value: `**${userData.xp}** / ${neededXP} XP`, inline: true },
+          { name: '📊 İlerleme Durumu', value: createProgressBar(userData.xp, neededXP), inline: false }
+        )
+        .setFooter({ text: 'Sohbet ederek XP kazanabilirsiniz!' })
+        .setTimestamp();
+
+      return message.reply({ embeds: [levelEmbed] });
+    }
+
+    // !liderlik / !top
+    if (content === '!liderlik' || content === '!top') {
+      const guildUsers = [];
+      userLevelMap.forEach((data, key) => {
+        if (key.startsWith(`${message.guild.id}-`)) {
+          guildUsers.push({ userId: key.split('-')[1], level: data.level, xp: data.xp });
+        }
+      });
+
+      guildUsers.sort((a, b) => b.level - a.level || b.xp - a.xp);
+      const top10 = guildUsers.slice(0, 10);
+      let description = '';
+
+      if (top10.length === 0) {
+        description = 'Henüz kimsede XP yok. Sohbet etmeye başla!';
+      } else {
+        top10.forEach((user, index) => {
+          const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '👤';
+          description += `${medal} **${index + 1}.** <@${user.userId}> — **Seviye ${user.level}** (${user.xp} XP)\n`;
+        });
+      }
+
+      const leaderboardEmbed = new EmbedBuilder()
+        .setColor('#FFD700')
+        .setTitle(`🏆 ${message.guild.name} • Seviye Liderlik Tablosu`)
+        .setDescription(description)
+        .setTimestamp();
+
+      return message.reply({ embeds: [leaderboardEmbed] });
+    }
   }
 
-  // Otomatik SA-AS
-  if (['sa', 's.a', 'selam', 'selamun aleykum', 'selamün aleyküm'].includes(content)) {
+  // Diğer Genel Komutlar
+  if (['sa', 's.a', 'selam'].includes(content)) {
     return message.reply(`Aleykümselam ${message.author}! Hoş geldin 👋`);
   }
 
-  // 📜 ŞIK KURALLAR KOMUTU
+  // 📜 KURALLAR KOMUTU (Sadece Yönetici ve Moderatörler)
   if (content === '!kurallar') {
+    if (!isAuthorized(message.member)) {
+      return message.reply('❌ Bu komutu sadece **Yönetici** veya **Moderatör** rolündekiler kullanabilir.');
+    }
     await message.delete().catch(() => {});
-
     const kurallarEmbed = new EmbedBuilder()
       .setColor('#FFB000')
-      .setAuthor({ 
-        name: message.guild.name, 
-        iconURL: message.guild.iconURL({ dynamic: true }) 
-      })
       .setTitle('KURALLAR')
-      .setThumbnail(message.guild.iconURL({ dynamic: true }) || client.user.displayAvatarURL())
       .setDescription(
         '👑 • **Kanalları amacı dışında kullanmak yasaktır!**\n\n' +
         '👑 • **Küfür, argo, hakaret yasaktır!**\n\n' +
         '👑 • **Özelden reklam, DM\'den reklam yasaktır!**\n\n' +
         '👑 • **Spam, Flood Yasaktır!**\n\n' +
-        '👑 • **Chatte tartışma çıkartıp genel huzuru bozmak yasaktır.**\n\n' +
         '👑 • **Din, dil, ırk ve cinsiyetçilik ayrımı yasaktır.**\n\n' +
-        '👑 • **Cinsel ve şiddet içerikli paylaşımlar yasaktır.**\n\n' +
-        '👑 • **Herhangi bir oyunun hesap satışı, takası yasaktır.**\n\n' +
-        '👑 • **Sunucu üyelerinden para, oyun parası, hesap vb. şeyler istemek yasaktır.**\n\n' +
-        '👑 • **Ses kanallarını trollemek yasaktır.**\n\n' +
-        '👑 • **İnsanların kişisel bilgilerini ve özel hayatıyla ilgili bilgileri paylaşmak yasaktır.**\n\n' +
-        '👑 • **Sunucumuzda "Hesap Boost" işlemleri yasaktır.**\n\n' +
-        '👑 • **Sunucumuzda yetkili gibi davranmak yasaktır.**\n\n' +
-        '👑 • **Sunucumuzda siyaset yapmak yasaktır.**\n\n' +
-        '👑 • **Kullanıcı adlarınız moderatörlerin sizi etiketleyebileceği şekilde sade olmalıdır.** *(Farklı karakter kullanımı yasaktır.)*'
-      )
-      .setFooter({ text: `${message.guild.name} • Sunucu Kuralları` })
-      .setTimestamp();
-
+        '👑 • **Siyaset yapmak yasaktır.**'
+      );
     return message.channel.send({ embeds: [kurallarEmbed] });
   }
 
-  // Yardım Menüsü
-  if (content === '!yardım') {
+  // 🤖 YARDIM KOMUTU (Sadece #bot-komut kanalında çalışır)
+  if (content === '!yardım' || content === '!help') {
+    const channelName = message.channel.name.toLowerCase();
+    if (!channelName.includes('bot-komut') && !channelName.includes('botkomut')) {
+      const warnMsg = await message.reply('⚠️ `!yardım` komutunu sadece **#bot-komut** kanalında kullanabilirsin!');
+      setTimeout(() => warnMsg.delete().catch(() => {}), 5000);
+      return;
+    }
+
     const yardımEmbed = new EmbedBuilder()
       .setColor('#5865F2')
-      .setTitle('🤖 Bot Komut & Karşılama Listesi')
-      .setDescription('Botumuz **Hoş Geldin** (`📙・hoşgeldiniz`) ve **Mod Log** (`#log`) sistemlerini otomatik destekler.')
+      .setTitle('🤖 Bot Komut & Sistem Listesi')
       .addFields(
-        { name: '⭐ Seviye Sistemi', value: '`!seviye` (@üye) - Seviyenizi ve XP durumunuzu gösterir.\n`!liderlik` - Sunucu Top 10 sıralamasını gösterir.' },
-        { name: '📜 Kurallar', value: '`!kurallar` - Sunucu kurallarını şık bir kart şeklinde kanala yazdırır.' },
-        { name: '🏷️ Otomatik Rol', value: 'Sunucuya katılan yeni üyelere otomatik **Kayıtlı Üye** rolü tanımlanır.' },
-        { name: '👋 Karşılama Sistemi', value: '`📙・hoşgeldiniz` kanalı açarsanız katılan/ayrılan üyeler özel görsel kartlarla karşılanır!' },
-        { name: '🛡️ Otomatik Güvenlik', value: '• **Küfür Engeli:** Otomatik silinir.\n• **Link Engeli:** Uyarı -> 5dk Timeout -> 1 Gün -> 1 Hafta -> Ban.' },
-        { name: '🎮 Eğlence', value: '`!zar`, `!yazıtura`, `!tkm [taş/kağıt/makas]`, `!karar [a] [b]`' },
-        { name: '📊 Bilgi', value: '`!ping`, `!avatar [@kullanıcı]`, `!sunucu`' },
-        { name: '🛠️ Moderasyon', value: '`!sil [1-100]`, `!at [@kullanıcı]`' }
+        { name: '⭐ Seviye Sistemi (#level-bilgi)', value: '`!seviye` - Seviye kartınızı gösterir.\n`!liderlik` - Sunucu sıralamasını gösterir.' },
+        { name: '🛡️ Otomatik Güvenlik', value: '• **Küfür Engeli:** Otomatik silinir.\n• **Link Engeli:** Kademeli uyarı/timeout/ban.' },
+        { name: '🎮 Eğlence / Bilgi', value: '`!zar`, `!yazıtura`, `!ping`, `!avatar`, `!sunucu`' }
       )
       .setTimestamp();
 
     return message.reply({ embeds: [yardımEmbed] });
   }
 
-  // Ping
-  if (content === '!ping') {
-    return message.reply(`🏓 Pong! Bot Gecikmesi: **${client.ws.ping}ms**`);
-  }
+  if (content === '!ping') return message.reply(`🏓 Pong! ${client.ws.ping}ms`);
+  if (content === '!zar') return message.reply(`🎲 Zarı attın ve **${Math.floor(Math.random() * 6) + 1}** geldi!`);
+  if (content === '!yazıtura') return message.reply(`Para havaya atıldı... Sonuç: **${Math.random() < 0.5 ? 'Yazı 🪙' : 'Tura 🪙'}**`);
 
-  // Zar
-  if (content === '!zar') {
-    const zar = Math.floor(Math.random() * 6) + 1;
-    return message.reply(`🎲 Zarı attın ve **${zar}** geldi!`);
-  }
-
-  // Yazı Tura
-  if (content === '!yazıtura') {
-    const sonuc = Math.random() < 0.5 ? 'Yazı 🪙' : 'Tura 🪙';
-    return message.reply(`Para havaya atıldı... Sonuç: **${sonuc}**`);
-  }
-
-  // Taş Kağıt Makas
-  if (content.startsWith('!tkm')) {
-    const secenekler = ['taş', 'kağıt', 'makas'];
-    const oyuncuSecimi = content.split(' ')[1];
-
-    if (!oyuncuSecimi || !secenekler.includes(oyuncuSecimi)) {
-      return message.reply('⚠️ Kullanım: `!tkm taş`, `!tkm kağıt` veya `!tkm makas`');
-    }
-
-    const botSecimi = secenekler[Math.floor(Math.random() * secenekler.length)];
-
-    if (oyuncuSecimi === botSecimi) return message.reply(`🤝 Berabere! İkiniz de **${botSecimi}** seçtiniz.`);
-
-    const kazandi = 
-      (oyuncuSecimi === 'taş' && botSecimi === 'makas') ||
-      (oyuncuSecimi === 'kağıt' && botSecimi === 'taş') ||
-      (oyuncuSecimi === 'makas' && botSecimi === 'kağıt');
-
-    return message.reply(kazandi 
-      ? `🎉 Kazandın! Sen: **${oyuncuSecimi}** | Bot: **${botSecimi}**` 
-      : `❌ Kaybettin! Sen: **${oyuncuSecimi}** | Bot: **${botSecimi}**`);
-  }
-
-  // Karar
-  if (content.startsWith('!karar')) {
-    const args = message.content.split(' ').slice(1);
-    if (args.length < 2) return message.reply('⚠️ En az 2 seçenek yazmalısın! Örn: `!karar pizza hamburger`');
-    const secilen = args[Math.floor(Math.random() * args.length)];
-    return message.reply(`🤔 Bence seçimin: **${secilen}** olmalı!`);
-  }
-
-  // Sunucu Bilgi
   if (content === '!sunucu') {
     const sunucuEmbed = new EmbedBuilder()
       .setColor('#0099ff')
       .setTitle(`🏰 ${message.guild.name} Sunucu Bilgileri`)
-      .setThumbnail(message.guild.iconURL({ dynamic: true }))
       .addFields(
         { name: '👥 Üye Sayısı', value: `${message.guild.memberCount}`, inline: true },
         { name: '🆔 Sunucu ID', value: `${message.guild.id}`, inline: true }
@@ -522,39 +403,27 @@ client.on('messageCreate', async (message) => {
     return message.reply({ embeds: [sunucuEmbed] });
   }
 
-  // Avatar
   if (content.startsWith('!avatar')) {
     const user = message.mentions.users.first() || message.author;
     return message.reply(`🖼️ **${user.username}** avatarı:\n${user.displayAvatarURL({ size: 1024, dynamic: true })}`);
   }
 
-  // ================= MODERASYON KOMUTLARI ================= //
-
-  // Mesaj Silme
   if (content.startsWith('!sil')) {
-    if (!isAuthorized(message.member)) {
-      return message.reply('❌ Bu komutu sadece **Yönetici** veya **Moderatör** rolündekiler kullanabilir.');
-    }
+    if (!isAuthorized(message.member)) return message.reply('❌ Yetkin yok.');
     const miktar = parseInt(message.content.split(' ')[1]);
-    if (isNaN(miktar) || miktar < 1 || miktar > 100) {
-      return message.reply('⚠️ 1 ile 100 arasında bir sayı girin. Örn: `!sil 10`');
-    }
+    if (isNaN(miktar) || miktar < 1 || miktar > 100) return message.reply('⚠️ 1-100 arası sayı girin.');
     await message.channel.bulkDelete(miktar, true);
     const msg = await message.channel.send(`🧹 **${miktar}** mesaj silindi!`);
     setTimeout(() => msg.delete().catch(() => {}), 3000);
   }
 
-  // Kullanıcı Atma
   if (content.startsWith('!at')) {
-    if (!isAuthorized(message.member)) {
-      return message.reply('❌ Bu komutu sadece **Yönetici** veya **Moderatör** rolündekiler kullanabilir.');
-    }
+    if (!isAuthorized(message.member)) return message.reply('❌ Yetkin yok.');
     const member = message.mentions.members.first();
-    if (!member) return message.reply('⚠️ Atılacak kullanıcıyı etiketlemelisin!');
-    if (!member.kickable) return message.reply('❌ Bu kullanıcıyı atacak yetkim yok.');
-
+    if (!member) return message.reply('⚠️ Kullanıcı etiketleyin!');
+    if (!member.kickable) return message.reply('❌ Bu kullanıcıyı atamam.');
     await member.kick();
-    return message.reply(`👞 **${member.user.tag}** sunucudan atıldı.`);
+    return message.reply(`Modern **${member.user.tag}** sunucudan atıldı.`);
   }
 });
 
