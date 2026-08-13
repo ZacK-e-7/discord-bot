@@ -8,19 +8,192 @@ const {
   AuditLogEvent 
 } = require('discord.js');
 
-// ================= EXPRESS WEB SUNUCUSU (7/24 KEEPALIVE) ================= //
+// ================= EXPRESS WEB SUNUCUSU ================= //
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
+
 app.get('/', (req, res) => {
-  res.send('🤖 Discord Botu 7/24 Aktif ve Çalışıyor!');
+  res.send('🤖 Discord Botu ve Web Portalı 7/24 Aktif!');
 });
 
-app.listen(PORT, () => {
-  console.log(`🌐 Web sunucusu ${PORT} portunda başarıyla başlatıldı.`);
+// Cloudflare Engelini Aşan Valorant Veri Çekici
+async function getValorantData(name, tag) {
+  // Gerçek Chrome Tarayıcı Kimliği (Cloudflare Engelini Aşar)
+  const browserHeaders = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7'
+  };
+
+  // 1. SERVİS: Kyroskoh API
+  try {
+    const url = `https://api.kyroskoh.xyz/valorant/v1/mmr/eu/${encodeURIComponent(name)}/${encodeURIComponent(tag)}`;
+    const res = await fetch(url, { headers: browserHeaders });
+    if (res.ok) {
+      const text = await res.text();
+      console.log('Kyroskoh Yanıtı:', text);
+      if (text && !text.toLowerCase().includes('error') && !text.toLowerCase().includes('cannot find')) {
+        const parts = text.split('-');
+        const rawRank = parts[0]?.trim() || 'Unranked';
+        const rrMatch = text.match(/(\d+)\s*RR/i);
+        const rr = rrMatch ? parseInt(rrMatch[1]) : 0;
+        return { rawRank, rr };
+      }
+    }
+  } catch (e) {
+    console.error('1. API Hatası:', e);
+  }
+
+  // 2. SERVİS: Vaccie API
+  try {
+    const url = `https://vaccie.pythonanywhere.com/mmr/${encodeURIComponent(name)}/${encodeURIComponent(tag)}/eu`;
+    const res = await fetch(url, { headers: browserHeaders });
+    if (res.ok) {
+      const text = await res.text();
+      console.log('Vaccie Yanıtı:', text);
+      if (text && !text.toLowerCase().includes('error')) {
+        const parts = text.split(',');
+        const rawRank = parts[0]?.trim() || 'Unranked';
+        const rrMatch = text.match(/RR:\s*(-?\d+)/i);
+        const rr = rrMatch ? parseInt(rrMatch[1]) : 0;
+        return { rawRank, rr };
+      }
+    }
+  } catch (e) {
+    console.error('2. API Hatası:', e);
+  }
+
+  // 3. SERVİS: HenrikDev API
+  try {
+    const url = `https://api.henrikdev.xyz/valorant/v1/mmr/eu/${encodeURIComponent(name)}/${encodeURIComponent(tag)}`;
+    const res = await fetch(url, { headers: browserHeaders });
+    if (res.ok) {
+      const json = await res.json();
+      if (json && json.data && json.data.currenttierpatched) {
+        return {
+          rawRank: json.data.currenttierpatched,
+          rr: json.data.ranking_in_tier || 0
+        };
+      }
+    }
+  } catch (e) {
+    console.error('3. API Hatası:', e);
+  }
+
+  return null;
+}
+
+// Web Doğrulama Sayfası
+app.get('/verify', (req, res) => {
+  const { uid, guild } = req.query;
+  if (!uid || !guild) return res.status(400).send('❌ Geçersiz bağlantı!');
+
+  res.send(`
+    <!DOCTYPE html>
+    <html lang="tr">
+    <head>
+      <meta charset="UTF-8">
+      <title>Valorant Tracker Doğrulama Portalı</title>
+      <style>
+        body { background-color: #0f1923; color: #ece8e1; font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .card { background: #1f2326; padding: 40px; border-radius: 12px; border-top: 5px solid #ff4655; text-align: center; max-width: 400px; width: 100%; }
+        h2 { color: #ff4655; margin-bottom: 10px; }
+        input { width: 100%; padding: 12px; margin-bottom: 15px; border-radius: 6px; border: 1px solid #36393f; background: #0f1923; color: white; text-align: center; font-size: 16px; box-sizing: border-box; }
+        button { width: 100%; padding: 14px; background: #ff4655; border: none; color: white; font-weight: bold; border-radius: 6px; cursor: pointer; font-size: 16px; }
+        button:hover { background: #e03e4d; }
+      </style>
+    </head>
+    <body>
+      <div class="card">
+        <h2>VALORANT DOĞRULAMA</h2>
+        <p style="color:#768079;">Riot Hesabınızı Discord Profilinizle Eşleştirin</p>
+        <form action="/verify" method="POST">
+          <input type="hidden" name="uid" value="${uid}">
+          <input type="hidden" name="guild" value="${guild}">
+          <input type="text" name="riotId" placeholder="Nick#Tag (Örn: Zekia#TR1)" required>
+          <button type="submit">Hesabı Doğrula ve Rolü Al</button>
+        </form>
+      </div>
+    </body>
+    </html>
+  `);
 });
 
-// ================= DISCORD BOTU İŞLEMLERİ ================= //
+// Form Onayı
+app.post('/verify', async (req, res) => {
+  const { uid, guild, riotId } = req.body;
+
+  if (!riotId || !riotId.includes('#')) {
+    return res.send('<body style="background:#0f1923; color:white; font-family:sans-serif; text-align:center; padding-top:100px;"><h3>❌ Lütfen Riot ID ve Tag bilgisini Nick#Tag şeklinde girin!</h3></body>');
+  }
+
+  const [name, tag] = riotId.split('#').map(s => s.trim());
+
+  try {
+    const targetGuild = client.guilds.cache.get(guild);
+    if (!targetGuild) return res.send('<h3>❌ Sunucu bulunamadı!</h3>');
+
+    const member = await targetGuild.members.fetch(uid).catch(() => null);
+    if (!member) return res.send('<h3>❌ Kullanıcı sunucuda bulunamadı!</h3>');
+
+    const vData = await getValorantData(name, tag);
+
+    if (!vData) {
+      return res.send(`
+        <body style="background:#0f1923; color:white; font-family:sans-serif; text-align:center; padding-top:100px;">
+          <h2 style="color:#ff4655;">❌ Kullanıcı Bulunamadı!</h2>
+          <p>Lütfen <strong>${name}#${tag}</strong> adını doğru yazdığınızdan ve bu sezonda en az 1 dereceli maç oynadığınızdan emin olun.</p>
+        </body>
+      `);
+    }
+
+    const rawRank = vData.rawRank;
+    const mainTier = rawRank.split(' ')[0];
+    const trRank = rankTranslation[mainTier] || 'Derecesiz';
+
+    // Eski rolleri sil
+    for (const rankName of valorantRanks) {
+      const oldRole = targetGuild.roles.cache.find(r => r.name.toLowerCase() === rankName.toLowerCase());
+      if (oldRole && member.roles.cache.has(oldRole.id)) {
+        await member.roles.remove(oldRole).catch(() => {});
+      }
+    }
+
+    // Yeni rolü ver
+    let rankRole = targetGuild.roles.cache.find(r => r.name.toLowerCase() === trRank.toLowerCase());
+    if (!rankRole) {
+      rankRole = await targetGuild.roles.create({
+        name: trRank,
+        color: getRankColor(mainTier),
+        reason: 'Valorant Rank Rolü'
+      }).catch(() => null);
+    }
+
+    if (rankRole) {
+      await member.roles.add(rankRole).catch(err => {
+        console.error('Rol verme hatası (Discord Rol Sıralamasını Kontrol Edin):', err);
+      });
+    }
+
+    res.send(`
+      <body style="background:#0f1923; color:white; font-family:sans-serif; text-align:center; padding-top:100px;">
+        <h1 style="color:#57F287;">🎉 TEBRİKLER!</h1>
+        <h2>${name}#${tag} hesabı başarıyla doğrulandı.</h2>
+        <p>Mevcut Rank: <strong>${rawRank}</strong> (${vData.rr} RR)</p>
+        <p>Discord sunucusundaki <strong>${trRank}</strong> rolünüz tanımlandı!</p>
+      </body>
+    `);
+  } catch (err) {
+    console.error(err);
+    res.send('<h3>❌ Bir hata oluştu.</h3>');
+  }
+});
+
+app.listen(PORT, () => console.log(`🌐 Port ${PORT} aktif`));
+
+// ================= DISCORD BOTU ================= //
 
 const client = new Client({
   intents: [
@@ -33,89 +206,77 @@ const client = new Client({
   ],
 });
 
-// Link Uyarılarını Hafızada Tutacak Sistem
 const linkWarnings = new Map();
+const valorantRanks = ['Demir', 'Bronz', 'Gümüş', 'Altın', 'Platin', 'Elmas', 'Yücelik', 'Ölümsüz', 'Radyant', 'Derecesiz'];
+const rankTranslation = {
+  'Iron': 'Demir', 'Bronze': 'Bronz', 'Silver': 'Gümüş', 'Gold': 'Altın',
+  'Platinum': 'Platin', 'Diamond': 'Elmas', 'Ascendant': 'Yücelik',
+  'Immortal': 'Ölümsüz', 'Radiant': 'Radyant', 'Unranked': 'Derecesiz'
+};
 
-// Yasaklı Küfür Listesi
-const kufurler = [
-  'amk', 'aq', 'amq', 'oç', 'oc', 'piç', 'pic', 'sik', 'yarak', 'yarrak', 
-  'orospu', 'kahpe', 'puşt', 'pust', 'ipne', 'ibne', 'göt', 'got', 'daşşak'
-];
+function getRankColor(tier) {
+  const colors = {
+    'Iron': '#5A5A5A', 'Bronze': '#8C5A3C', 'Silver': '#A9A9A9', 'Gold': '#E5B80B',
+    'Platinum': '#008080', 'Diamond': '#8A2BE2', 'Ascendant': '#00FF7F',
+    'Immortal': '#DC143C', 'Radiant': '#FFF8DC'
+  };
+  return colors[tier] || '#99AAB5';
+}
 
-// Mod Log kanalını bulan fonksiyon
+const kufurler = ['amk', 'aq', 'amq', 'oç', 'oc', 'piç', 'pic', 'sik', 'yarak', 'yarrak', 'orospu', 'kahpe', 'puşt', 'pust', 'ipne', 'ibne', 'göt', 'got', 'daşşak'];
+
 function getLogChannel(guild) {
   if (!guild) return null;
   return guild.channels.cache.find(c => c.name.includes('log') || c.name.includes('mod-log'));
 }
 
-// Hoş Geldin kanalını bulan fonksiyon
 function getWelcomeChannel(guild) {
   if (!guild) return null;
   return guild.channels.cache.find(c => 
-    c.name.includes('hoşgeldin') || 
-    c.name.includes('hosgeldin') || 
-    c.name.includes('hoşgeldiniz') || 
-    c.name.includes('hosgeldiniz') || 
-    c.name.includes('welcome') || 
-    c.name.includes('giriş-çıkış')
+    c.name.includes('hoşgeldin') || c.name.includes('hosgeldin') || c.name.includes('hoşgeldiniz') || 
+    c.name.includes('hosgeldiniz') || c.name.includes('welcome') || c.name.includes('giriş-çıkış')
   );
 }
 
-// Yetkili / Moderatör Kontrolü
 function isAuthorized(member) {
   if (!member) return false;
   if (member.permissions.has(PermissionFlagsBits.Administrator)) return true;
   return member.roles.cache.some(role => 
-    ['yönetici', 'yonetici', 'moderatör', 'moderator', 'mod'].some(keyword => 
-      role.name.toLowerCase().includes(keyword)
-    )
+    ['yönetici', 'yonetici', 'moderatör', 'moderator', 'mod'].some(keyword => role.name.toLowerCase().includes(keyword))
   );
 }
 
 client.once('ready', () => {
   console.log(`🤖 Bot aktif! ${client.user.tag} olarak giriş yapıldı.`);
-  client.user.setActivity('!yardım | Koruma & Sistem', { type: 3 });
+  client.user.setActivity('!yardım | Web Portal & Güvenlik', { type: 3 });
 });
 
-// ================= BAN LOG SİSTEMİ ================= //
-
+// Ban & Timeout Log
 client.on('guildBanAdd', async (ban) => {
   const logChannel = getLogChannel(ban.guild);
   if (!logChannel) return;
-
   let executor = 'Bilinmiyor / Otomatik Sistem';
   let reason = 'Sebep Belirtilmedi';
-
   try {
-    const fetchedLogs = await ban.guild.fetchAuditLogs({
-      limit: 1,
-      type: AuditLogEvent.MemberBanAdd,
-    });
+    const fetchedLogs = await ban.guild.fetchAuditLogs({ limit: 1, type: AuditLogEvent.MemberBanAdd });
     const banLog = fetchedLogs.entries.first();
-
     if (banLog && banLog.target.id === ban.user.id) {
       if (banLog.executor) executor = `${banLog.executor} (${banLog.executor.tag})`;
       if (banLog.reason) reason = banLog.reason;
     }
-  } catch (err) {
-    console.error('Ban Audit Log çekilemedi:', err);
-  }
+  } catch (err) {}
 
   const embed = new EmbedBuilder()
     .setColor('#992D22')
     .setTitle('🔨 Kullanıcı Yasaklandı (Ban)')
     .addFields(
-      { name: 'Yasaklanan Kullanıcı', value: `${ban.user} (${ban.user.tag})`, inline: true },
-      { name: 'Yasaklayan Yetkili / Sistem', value: executor, inline: true },
-      { name: 'Yasaklanma Sebebi', value: reason }
+      { name: 'Yasaklanan', value: `${ban.user} (${ban.user.tag})`, inline: true },
+      { name: 'Yetkili', value: executor, inline: true },
+      { name: 'Sebep', value: reason }
     )
-    .setFooter({ text: `Kullanıcı ID: ${ban.user.id}` })
     .setTimestamp();
-
   logChannel.send({ embeds: [embed] }).catch(() => {});
 });
-
-// ================= TIMEOUT LOG SİSTEMİ ================= //
 
 client.on('guildMemberUpdate', async (oldMember, newMember) => {
   const logChannel = getLogChannel(newMember.guild);
@@ -123,334 +284,139 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
 
   if (!oldMember.isCommunicationDisabled() && newMember.isCommunicationDisabled()) {
     const timeoutUntil = newMember.communicationDisabledUntilTimestamp;
-    const durationMs = timeoutUntil - Date.now();
-    const minutes = Math.ceil(durationMs / (1000 * 60));
-
+    const minutes = Math.ceil((timeoutUntil - Date.now()) / (1000 * 60));
     let executor = 'Bilinmiyor / Otomatik Sistem';
     try {
-      const fetchedLogs = await newMember.guild.fetchAuditLogs({
-        limit: 1,
-        type: AuditLogEvent.MemberUpdate,
-      });
+      const fetchedLogs = await newMember.guild.fetchAuditLogs({ limit: 1, type: AuditLogEvent.MemberUpdate });
       const timeoutLog = fetchedLogs.entries.first();
       if (timeoutLog && timeoutLog.target.id === newMember.id && timeoutLog.executor) {
         executor = `${timeoutLog.executor} (${timeoutLog.executor.tag})`;
       }
-    } catch (err) {
-      console.error('Audit Log çekilemedi:', err);
-    }
+    } catch (err) {}
 
     const embed = new EmbedBuilder()
       .setColor('#E67E22')
       .setTitle('⏰ Kullanıcıya Timeout Atıldı')
       .addFields(
-        { name: 'Susturulan Kullanıcı', value: `${newMember.user} (${newMember.user.tag})`, inline: true },
-        { name: 'Susturan Yetkili / Sistem', value: executor, inline: true },
-        { name: 'Süre / Bitiş', value: `Yaklaşık **${minutes} dakika** (<t:${Math.floor(timeoutUntil / 1000)}:R>)` }
+        { name: 'Susturulan', value: `${newMember.user}`, inline: true },
+        { name: 'Yetkili', value: executor, inline: true },
+        { name: 'Süre', value: `~${minutes} dk (<t:${Math.floor(timeoutUntil / 1000)}:R>)` }
       )
-      .setFooter({ text: `Kullanıcı ID: ${newMember.id}` })
       .setTimestamp();
-
-    return logChannel.send({ embeds: [embed] }).catch(() => {});
-  }
-
-  if (oldMember.isCommunicationDisabled() && !newMember.isCommunicationDisabled()) {
-    const embed = new EmbedBuilder()
-      .setColor('#2ECC71')
-      .setTitle('🔊 Timeout Kaldırıldı')
-      .setDescription(`${newMember.user} (${newMember.user.tag}) üzerindeki timeout süresi doldu veya kaldırıldı.`)
-      .setTimestamp();
-
     return logChannel.send({ embeds: [embed] }).catch(() => {});
   }
 });
 
-// ================= HOŞ GELDİN & OTOMATİK ROL SİSTEMİ ================= //
-
+// Hoş Geldin
 client.on('guildMemberAdd', async (member) => {
-  // 1. OTOMATİK ROL VERME
   const autoRole = member.guild.roles.cache.find(role => 
-    role.name.toLowerCase().includes('kayıtlı üye') ||
-    role.name.toLowerCase().includes('kayitli uye') ||
-    role.name.toLowerCase().includes('üye') ||
-    role.name.toLowerCase().includes('uye')
+    ['kayıtlı üye', 'kayitli uye', 'üye', 'uye'].some(k => role.name.toLowerCase().includes(k))
   );
+  if (autoRole) await member.roles.add(autoRole).catch(() => {});
 
-  if (autoRole) {
-    await member.roles.add(autoRole).catch(() => {});
-  }
-
-  // 2. HOŞ GELDİN MESAJI
   const welcomeChannel = getWelcomeChannel(member.guild);
   if (welcomeChannel) {
     const welcomeEmbed = new EmbedBuilder()
       .setColor('#57F287')
       .setTitle(`🎉 Sunucumuza Hoş Geldin ${member.user.username}!`)
-      .setDescription(`Aramıza katıldığın için çok mutluyuz ${member}! 👋\n\n🏰 **${member.guild.name}** sunucusunda seninle birlikte **${member.guild.memberCount}** üye olduk!${autoRole ? `\n\n✅ **${autoRole.name}** rolün otomatik tanımlandı.` : ''}`)
-      .setThumbnail(member.user.displayAvatarURL({ dynamic: true, size: 256 }))
-      .addFields({
-        name: '🛡️ Hesap Oluşturulma Tarihi',
-        value: `<t:${Math.floor(member.user.createdTimestamp / 1000)}:R>`,
-        inline: true
-      })
-      .setFooter({ text: 'Keyifli vakit geçirmeni dileriz!' })
+      .setDescription(`Aramıza katıldığın için mutluyuz ${member}! 👋\n🏰 **${member.guild.name}** sunucusunda seninle birlikte **${member.guild.memberCount}** kişi olduk!`)
+      .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
       .setTimestamp();
-
     welcomeChannel.send({ embeds: [welcomeEmbed] }).catch(() => {});
   }
-
-  // 3. MOD LOG KAYDI
-  const logChannel = getLogChannel(member.guild);
-  if (logChannel) {
-    const logEmbed = new EmbedBuilder()
-      .setColor('#57F287')
-      .setTitle('📥 Sunucuya Biri Katıldı')
-      .setDescription(`${member.user} (${member.user.tag}) katıldı.${autoRole ? `\n🏷️ **Otomatik Rol:** ${autoRole.name}` : ''}\n**Hesap Yaşı:** <t:${Math.floor(member.user.createdTimestamp / 1000)}:R>`)
-      .setTimestamp();
-
-    logChannel.send({ embeds: [logEmbed] }).catch(() => {});
-  }
 });
 
-client.on('guildMemberRemove', (member) => {
-  const welcomeChannel = getWelcomeChannel(member.guild);
-  if (welcomeChannel) {
-    const leaveEmbed = new EmbedBuilder()
-      .setColor('#ED4245')
-      .setTitle(`📤 Görüşmek Üzere ${member.user.username}...`)
-      .setDescription(`${member.user.tag} aramızdan ayrıldı. Kalan üye sayısı: **${member.guild.memberCount}**`)
-      .setThumbnail(member.user.displayAvatarURL({ dynamic: true, size: 256 }))
-      .setTimestamp();
-
-    welcomeChannel.send({ embeds: [leaveEmbed] }).catch(() => {});
-  }
-
-  const logChannel = getLogChannel(member.guild);
-  if (logChannel) {
-    const logEmbed = new EmbedBuilder()
-      .setColor('#ED4245')
-      .setTitle('📤 Sunucudan Biri Ayrıldı')
-      .setDescription(`${member.user} (${member.user.tag}) ayrıldı.`)
-      .setTimestamp();
-
-    logChannel.send({ embeds: [logEmbed] }).catch(() => {});
-  }
-});
-
-// ================= OTOMATİK KORUMA & KOMUTLAR ================= //
-
+// Mesaj Dinleyici
 client.on('messageCreate', async (message) => {
   if (message.author.bot || !message.guild) return;
-
   const content = message.content.toLowerCase();
   const userKey = `${message.guild.id}-${message.author.id}`;
 
-  // 1. KÜFÜR ENGELİ (Yetkililer muaf)
+  // Küfür Engeli
   if (!isAuthorized(message.member)) {
-    const kufurVar = kufurler.some(kufur => {
-      const regex = new RegExp(`\\b${kufur}\\b`, 'i');
-      return regex.test(content) || content.includes(kufur);
-    });
-
-    if (kufurVar) {
+    if (kufurler.some(k => content.includes(k))) {
       await message.delete().catch(() => {});
-      const uyarimsg = await message.channel.send(`⚠️ ${message.author}, bu sunucuda **küfürlü konuşmak yasaktır!**`);
-      setTimeout(() => uyarimsg.delete().catch(() => {}), 4000);
+      const msg = await message.channel.send(`⚠️ ${message.author}, bu sunucuda **küfürlü konuşmak yasaktır!**`);
+      setTimeout(() => msg.delete().catch(() => {}), 4000);
       return;
     }
   }
 
-  // 2. KADEMELİ LİNK ENGELİ (Yetkililer muaf)
+  // Link Engeli
   const linkRegex = /(https?:\/\/[^\s]+)|(www\.[^\s]+)|(discord\.(gg|io|me|li)\/[^\s]+)/i;
   if (!isAuthorized(message.member) && linkRegex.test(message.content)) {
     await message.delete().catch(() => {});
-
     let warnings = (linkWarnings.get(userKey) || 0) + 1;
     linkWarnings.set(userKey, warnings);
 
     if (warnings === 1) {
-      const msg = await message.channel.send(`⚠️ ${message.author}, **bu sunucuda link paylaşmak yasaktır!** (Uyarı: 1/5)`);
+      const msg = await message.channel.send(`⚠️ ${message.author}, **link paylaşmak yasaktır!** (Uyarı: 1/5)`);
       setTimeout(() => msg.delete().catch(() => {}), 5000);
-    } 
-    else if (warnings === 2) {
-      await message.member.timeout(5 * 60 * 1000, 'Link paylaşımı (2. Uyarı)').catch(() => {});
-      const msg = await message.channel.send(`⚠️ ${message.author}, defalarca link paylaştığın için **5 dakika timeout** atıldı! (Uyarı: 2/5)`);
-      setTimeout(() => msg.delete().catch(() => {}), 6000);
-    } 
-    else if (warnings === 3) {
-      await message.member.timeout(24 * 60 * 60 * 1000, 'Link paylaşımı (3. Uyarı)').catch(() => {});
-      const msg = await message.channel.send(`⚠️ ${message.author}, link paylaşmaya devam ettiğin için **1 gün timeout** atıldı! (Uyarı: 3/5)`);
-      setTimeout(() => msg.delete().catch(() => {}), 6000);
-    } 
-    else if (warnings === 4) {
-      await message.member.timeout(7 * 24 * 60 * 60 * 1000, 'Link paylaşımı (4. Uyarı)').catch(() => {});
-      const msg = await message.channel.send(`🚨 ${message.author}, link paylaşımına devam ettiğin için **1 hafta timeout** atıldı! Son uyarın! (Uyarı: 4/5)`);
-      setTimeout(() => msg.delete().catch(() => {}), 6000);
-    } 
-    else if (warnings >= 5) {
-      await message.member.ban({ reason: '5 kez link paylaşımı yapıldığı için otomatik banlandı.' }).catch(() => {});
-      message.channel.send(`🔨 ${message.author.tag}, 5 kez üst üste link paylaştığı için **sunucudan banlandı!**`);
+    } else if (warnings === 2) {
+      await message.member.timeout(5 * 60 * 1000).catch(() => {});
+      message.channel.send(`⚠️ ${message.author}, link paylaşımından **5 dk timeout** aldı! (Uyarı: 2/5)`);
+    } else if (warnings === 3) {
+      await message.member.timeout(24 * 60 * 60 * 1000).catch(() => {});
+      message.channel.send(`⚠️ ${message.author}, link paylaşımından **1 gün timeout** aldı! (Uyarı: 3/5)`);
+    } else if (warnings === 4) {
+      await message.member.timeout(7 * 24 * 60 * 60 * 1000).catch(() => {});
+      message.channel.send(`🚨 ${message.author}, link paylaşımından **1 hafta timeout** aldı! (Uyarı: 4/5)`);
+    } else if (warnings >= 5) {
+      await message.member.ban({ reason: '5 kez link paylaşımı' }).catch(() => {});
+      message.channel.send(`🔨 ${message.author.tag}, 5 kez link paylaştığı için **banlandı!**`);
       linkWarnings.delete(userKey);
     }
     return;
   }
 
-  // ================= KOMUTLAR ================= //
+  // !v-rank Komutu
+  if (content === '!v-rank' || content === '!tracker' || content === '!doğrula') {
+    const serverUrl = process.env.SERVER_URL || `http://localhost:${PORT}`;
+    const verifyUrl = `${serverUrl}/verify?uid=${message.author.id}&guild=${message.guild.id}`;
 
-  // Otomatik SA-AS
-  if (['sa', 's.a', 'selam', 'selamun aleykum', 'selamün aleyküm'].includes(content)) {
-    return message.reply(`Aleykümselam ${message.author}! Hoş geldin 👋`);
+    const verifyEmbed = new EmbedBuilder()
+      .setColor('#FF4655')
+      .setTitle('🌐 Valorant Web Doğrulama Portalı')
+      .setDescription(
+        `Riot hesabınızı doğrulamak ve otomatik rank rolünüzü almak için aşağıdaki özel bağlantıya tıklayın:\n\n` +
+        `🔗 **[Valorant Hesabını Doğrulamak İçin Tıkla](${verifyUrl})**`
+      )
+      .setFooter({ text: 'Giriş yaptıktan sonra rank rolünüz otomatik tanımlanır.' })
+      .setTimestamp();
+
+    return message.reply({ embeds: [verifyEmbed] });
   }
 
-  // 📜 ŞIK KURALLAR KOMUTU
+  // !kurallar Komutu
   if (content === '!kurallar') {
     await message.delete().catch(() => {});
-
     const kurallarEmbed = new EmbedBuilder()
       .setColor('#FFB000')
-      .setAuthor({ 
-        name: message.guild.name, 
-        iconURL: message.guild.iconURL({ dynamic: true }) 
-      })
       .setTitle('KURALLAR')
-      .setThumbnail(message.guild.iconURL({ dynamic: true }) || client.user.displayAvatarURL())
       .setDescription(
         '👑 • **Kanalları amacı dışında kullanmak yasaktır!**\n\n' +
         '👑 • **Küfür, argo, hakaret yasaktır!**\n\n' +
         '👑 • **Özelden reklam, DM\'den reklam yasaktır!**\n\n' +
         '👑 • **Spam, Flood Yasaktır!**\n\n' +
-        '👑 • **Chatte tartışma çıkartıp genel huzuru bozmak yasaktır.**\n\n' +
         '👑 • **Din, dil, ırk ve cinsiyetçilik ayrımı yasaktır.**\n\n' +
-        '👑 • **Cinsel ve şiddet içerikli paylaşımlar yasaktır.**\n\n' +
-        '👑 • **Herhangi bir oyunun hesap satışı, takası yasaktır.**\n\n' +
-        '👑 • **Sunucu üyelerinden para, oyun parası, hesap vb. şeyler istemek yasaktır.**\n\n' +
-        '👑 • **Ses kanallarını trollemek yasaktır.**\n\n' +
-        '👑 • **İnsanların kişisel bilgilerini ve özel hayatıyla ilgili bilgileri paylaşmak yasaktır.**\n\n' +
-        '👑 • **Sunucumuzda "Hesap Boost" işlemleri yasaktır.**\n\n' +
-        '👑 • **Sunucumuzda yetkili gibi davranmak yasaktır.**\n\n' +
-        '👑 • **Sunucumuzda siyaset yapmak yasaktır.**\n\n' +
-        '👑 • **Kullanıcı adlarınız moderatörlerin sizi etiketleyebileceği şekilde sade olmalıdır.** *(Farklı karakter kullanımı yasaktır.)*'
-      )
-      .setFooter({ text: `${message.guild.name} • Sunucu Kuralları` })
-      .setTimestamp();
-
+        '👑 • **Siyaset yapmak yasaktır.**'
+      );
     return message.channel.send({ embeds: [kurallarEmbed] });
   }
 
-  // Yardım Menüsü
-  if (content === '!yardım') {
-    const yardımEmbed = new EmbedBuilder()
-      .setColor('#5865F2')
-      .setTitle('🤖 Bot Komut & Karşılama Listesi')
-      .setDescription('Botumuz **Hoş Geldin** (`📙・hoşgeldiniz`) ve **Mod Log** (`#log`) sistemlerini otomatik destekler.')
-      .addFields(
-        { name: '📜 Kurallar', value: '`!kurallar` - Sunucu kurallarını şık bir kart şeklinde kanala yazdırır.' },
-        { name: '🏷️ Otomatik Rol', value: 'Sunucuya katılan yeni üyelere otomatik **Kayıtlı Üye** rolü tanımlanır.' },
-        { name: '👋 Karşılama Sistemi', value: '`📙・hoşgeldiniz` kanalı açarsanız katılan/ayrılan üyeler özel görsel kartlarla karşılanır!' },
-        { name: '🛡️ Otomatik Güvenlik', value: '• **Küfür Engeli:** Otomatik silinir.\n• **Link Engeli:** Uyarı -> 5dk Timeout -> 1 Gün -> 1 Hafta -> Ban.' },
-        { name: '🎮 Eğlence', value: '`!zar`, `!yazıtura`, `!tkm [taş/kağıt/makas]`, `!karar [a] [b]`' },
-        { name: '📊 Bilgi', value: '`!ping`, `!avatar [@kullanıcı]`, `!sunucu`' },
-        { name: '🛠️ Moderasyon', value: '`!sil [1-100]`, `!at [@kullanıcı]`' }
-      )
-      .setTimestamp();
-
-    return message.reply({ embeds: [yardımEmbed] });
+  // SA-AS
+  if (['sa', 's.a', 'selam'].includes(content)) {
+    return message.reply(`Aleykümselam ${message.author}! Hoş geldin 👋`);
   }
 
-  // Ping
-  if (content === '!ping') {
-    return message.reply(`🏓 Pong! Bot Gecikmesi: **${client.ws.ping}ms**`);
-  }
-
-  // Zar
-  if (content === '!zar') {
-    const zar = Math.floor(Math.random() * 6) + 1;
-    return message.reply(`🎲 Zarı attın ve **${zar}** geldi!`);
-  }
-
-  // Yazı Tura
-  if (content === '!yazıtura') {
-    const sonuc = Math.random() < 0.5 ? 'Yazı 🪙' : 'Tura 🪙';
-    return message.reply(`Para havaya atıldı... Sonuç: **${sonuc}**`);
-  }
-
-  // Taş Kağıt Makas
-  if (content.startsWith('!tkm')) {
-    const secenekler = ['taş', 'kağıt', 'makas'];
-    const oyuncuSecimi = content.split(' ')[1];
-
-    if (!oyuncuSecimi || !secenekler.includes(oyuncuSecimi)) {
-      return message.reply('⚠️ Kullanım: `!tkm taş`, `!tkm kağıt` veya `!tkm makas`');
-    }
-
-    const botSecimi = secenekler[Math.floor(Math.random() * secenekler.length)];
-
-    if (oyuncuSecimi === botSecimi) return message.reply(`🤝 Berabere! İkiniz de **${botSecimi}** seçtiniz.`);
-
-    const kazandi = 
-      (oyuncuSecimi === 'taş' && botSecimi === 'makas') ||
-      (oyuncuSecimi === 'kağıt' && botSecimi === 'taş') ||
-      (oyuncuSecimi === 'makas' && botSecimi === 'kağıt');
-
-    return message.reply(kazandi 
-      ? `🎉 Kazandın! Sen: **${oyuncuSecimi}** | Bot: **${botSecimi}**` 
-      : `❌ Kaybettin! Sen: **${oyuncuSecimi}** | Bot: **${botSecimi}**`);
-  }
-
-  // Karar
-  if (content.startsWith('!karar')) {
-    const args = message.content.split(' ').slice(1);
-    if (args.length < 2) return message.reply('⚠️ En az 2 seçenek yazmalısın! Örn: `!karar pizza hamburger`');
-    const secilen = args[Math.floor(Math.random() * args.length)];
-    return message.reply(`🤔 Bence seçimin: **${secilen}** olmalı!`);
-  }
-
-  // Sunucu Bilgi
-  if (content === '!sunucu') {
-    const sunucuEmbed = new EmbedBuilder()
-      .setColor('#0099ff')
-      .setTitle(`🏰 ${message.guild.name} Sunucu Bilgileri`)
-      .setThumbnail(message.guild.iconURL({ dynamic: true }))
-      .addFields(
-        { name: '👥 Üye Sayısı', value: `${message.guild.memberCount}`, inline: true },
-        { name: '🆔 Sunucu ID', value: `${message.guild.id}`, inline: true }
-      );
-    return message.reply({ embeds: [sunucuEmbed] });
-  }
-
-  // Avatar
-  if (content.startsWith('!avatar')) {
-    const user = message.mentions.users.first() || message.author;
-    return message.reply(`🖼️ **${user.username}** avatarı:\n${user.displayAvatarURL({ size: 1024, dynamic: true })}`);
-  }
-
-  // ================= MODERASYON KOMUTLARI ================= //
-
-  // Mesaj Silme
+  // !sil Komutu
   if (content.startsWith('!sil')) {
-    if (!isAuthorized(message.member)) {
-      return message.reply('❌ Bu komutu sadece **Yönetici** veya **Moderatör** rolündekiler kullanabilir.');
-    }
+    if (!isAuthorized(message.member)) return message.reply('❌ Yetkin yok.');
     const miktar = parseInt(message.content.split(' ')[1]);
-    if (isNaN(miktar) || miktar < 1 || miktar > 100) {
-      return message.reply('⚠️ 1 ile 100 arasında bir sayı girin. Örn: `!sil 10`');
-    }
+    if (isNaN(miktar) || miktar < 1 || miktar > 100) return message.reply('⚠️ 1-100 arası sayı girin.');
     await message.channel.bulkDelete(miktar, true);
     const msg = await message.channel.send(`🧹 **${miktar}** mesaj silindi!`);
     setTimeout(() => msg.delete().catch(() => {}), 3000);
-  }
-
-  // Kullanıcı Atma
-  if (content.startsWith('!at')) {
-    if (!isAuthorized(message.member)) {
-      return message.reply('❌ Bu komutu sadece **Yönetici** veya **Moderatör** rolündekiler kullanabilir.');
-    }
-    const member = message.mentions.members.first();
-    if (!member) return message.reply('⚠️ Atılacak kullanıcıyı etiketlemelisin!');
-    if (!member.kickable) return message.reply('❌ Bu kullanıcıyı atacak yetkim yok.');
-
-    await member.kick();
-    return message.reply(`👞 **${member.user.tag}** sunucudan atıldı.`);
   }
 });
 
