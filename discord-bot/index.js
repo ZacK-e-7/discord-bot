@@ -15,10 +15,75 @@ const PORT = process.env.PORT || 3000;
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
-// Render Health Check (Botun 7/24 uyanık kalmasını sağlar)
+// Render Health Check
 app.get('/', (req, res) => {
   res.send('🤖 Discord Botu ve Web Portalı 7/24 Aktif!');
 });
+
+// Valorant Rank Çekici (Çift Yedekli API Sistemi)
+async function getValorantData(name, tag) {
+  // 1. Birinci Servis (HenrikDev API)
+  try {
+    const res = await fetch(`https://api.henrikdev.xyz/valorant/v1/mmr/eu/${encodeURIComponent(name)}/${encodeURIComponent(tag)}`);
+    if (res.ok) {
+      const json = await res.json();
+      if (json && json.data && json.data.currenttierpatched) {
+        return {
+          rawRank: json.data.currenttierpatched,
+          rr: json.data.ranking_in_tier || 0,
+          change: json.data.mmr_change_to_last_game || 0,
+          icon: json.data.images?.large || null
+        };
+      }
+    }
+  } catch (e) {
+    console.log('1. API yanıt vermedi, yedek API deneniyor...');
+  }
+
+  // 2. İkinci Yedek Servis (Vaccie API - Key Gerektirmez)
+  try {
+    const res = await fetch(`https://vaccie.pythonanywhere.com/mmr/${encodeURIComponent(name)}/${encodeURIComponent(tag)}/eu`);
+    if (res.ok) {
+      const text = await res.text();
+      if (text && !text.toLowerCase().includes('error') && !text.toLowerCase().includes('not found')) {
+        const parts = text.split(',');
+        const rawRank = parts[0]?.trim() || 'Unranked';
+        const rrMatch = text.match(/RR:\s*(-?\d+)/i);
+        const rr = rrMatch ? parseInt(rrMatch[1]) : 0;
+        return {
+          rawRank: rawRank,
+          rr: rr,
+          change: 0,
+          icon: null
+        };
+      }
+    }
+  } catch (e) {
+    console.log('2. API yanıt vermedi, 3. yedek deneniyor...');
+  }
+
+  // 3. Üçüncü Yedek Servis (Kyroskoh API)
+  try {
+    const res = await fetch(`https://api.kyroskoh.xyz/valorant/v1/mmr/eu/${encodeURIComponent(name)}/${encodeURIComponent(tag)}?show=combo&display=0`);
+    if (res.ok) {
+      const text = await res.text();
+      if (text && !text.toLowerCase().includes('error') && !text.toLowerCase().includes('there is an error')) {
+        const parts = text.split('-');
+        const rawRank = parts[0]?.trim() || 'Unranked';
+        const rrMatch = text.match(/(\d+)RR/i);
+        const rr = rrMatch ? parseInt(rrMatch[1]) : 0;
+        return {
+          rawRank: rawRank,
+          rr: rr,
+          change: 0,
+          icon: null
+        };
+      }
+    }
+  } catch (e) {}
+
+  return null;
+}
 
 // Web Doğrulama Portalı Görsel Sayfası
 app.get('/verify', (req, res) => {
@@ -62,7 +127,7 @@ app.post('/verify', async (req, res) => {
   const { uid, guild, riotId } = req.body;
 
   if (!riotId || !riotId.includes('#')) {
-    return res.send('<h3>❌ Lütfen Riot ID ve Tag bilgini Nick#Tag şeklinde gir!</h3>');
+    return res.send('<body style="background:#0f1923; color:white; font-family:sans-serif; text-align:center; padding-top:100px;"><h3>❌ Lütfen Riot ID ve Tag bilgisini Nick#Tag şeklinde girin!</h3></body>');
   }
 
   const [name, tag] = riotId.split('#').map(s => s.trim());
@@ -74,19 +139,23 @@ app.post('/verify', async (req, res) => {
     const member = await targetGuild.members.fetch(uid).catch(() => null);
     if (!member) return res.send('<h3>❌ Kullanıcı sunucuda bulunamadı!</h3>');
 
-    // Valorant API Sorgusu
-    const mmrRes = await fetch(`https://api.henrikdev.xyz/valorant/v1/mmr/eu/${encodeURIComponent(name)}/${encodeURIComponent(tag)}`);
-    const mmrData = await mmrRes.json();
+    // Yedekli Valorant API Verisini Çek
+    const vData = await getValorantData(name, tag);
 
-    if (!mmrRes.ok || !mmrData.data || mmrData.status !== 200) {
-      return res.send('<h3>❌ Valorant hesabı bulunamadı veya dereceli geçmişi kapalı!</h3>');
+    if (!vData) {
+      return res.send(`
+        <body style="background:#0f1923; color:white; font-family:sans-serif; text-align:center; padding-top:100px;">
+          <h2 style="color:#ff4655;">❌ Kullanıcı Bulunamadı veya Dereceli Geçmişi Yok!</h2>
+          <p>Lütfen <strong>${name}#${tag}</strong> adını doğru yazdığınızdan ve bu sezonda en az 1 dereceli maç oynadığınızdan emin olun.</p>
+        </body>
+      `);
     }
 
-    const rawRank = mmrData.data.currenttierpatched || 'Unranked';
+    const rawRank = vData.rawRank;
     const mainTier = rawRank.split(' ')[0];
     const trRank = rankTranslation[mainTier] || 'Derecesiz';
 
-    // Eski rolleri temizle
+    // Eski Valorant rollerini temizle
     for (const rankName of valorantRanks) {
       const oldRole = targetGuild.roles.cache.find(r => r.name.toLowerCase() === rankName.toLowerCase());
       if (oldRole && member.roles.cache.has(oldRole.id)) {
@@ -94,23 +163,31 @@ app.post('/verify', async (req, res) => {
       }
     }
 
-    // Rolü Bul veya Oluştur
+    // Yeni Rolü Bul veya Oluştur
     let rankRole = targetGuild.roles.cache.find(r => r.name.toLowerCase() === trRank.toLowerCase());
     if (!rankRole) {
       rankRole = await targetGuild.roles.create({
         name: trRank,
         color: getRankColor(mainTier),
         reason: 'Web Portalı Otomatik Rank Rolü'
-      }).catch(() => null);
+      }).catch(err => {
+        console.error('Rol oluşturulamadı:', err);
+        return null;
+      });
     }
 
-    if (rankRole) await member.roles.add(rankRole).catch(() => {});
+    if (rankRole) {
+      await member.roles.add(rankRole).catch(err => {
+        console.error('Rol verilemedi (Discord rol sıralamasını kontrol edin):', err);
+      });
+    }
 
     res.send(`
       <body style="background:#0f1923; color:white; font-family:sans-serif; text-align:center; padding-top:100px;">
         <h1 style="color:#57F287;">🎉 TEBRİKLER!</h1>
         <h2>${name}#${tag} hesabı başarıyla doğrulandı.</h2>
-        <p>Discord sunucusundaki <strong>${trRank}</strong> rolünüz hesabınıza tanımlandı. Bu sekmeyi kapatabilirsiniz.</p>
+        <p>Mevcut Rank: <strong>${rawRank}</strong> (${vData.rr} RR)</p>
+        <p>Discord sunucusundaki <strong>${trRank}</strong> rolünüz tanımlandı. Bu sekmeyi kapatabilirsiniz.</p>
       </body>
     `);
   } catch (err) {
