@@ -255,13 +255,13 @@ client.on('messageCreate', async (message) => {
     try {
       await message.channel.sendTyping();
 
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{
             parts: [{
-              text: `Sen Discord sunucusunda hizmet veren samimi, esprili, zeki ve yardımsever bir asistansın. Adın: Boom Bot. Kullanıcıya Türkçe olarak samimi, doğal ve sohbet ortamına uygun şekilde cevap ver. Aşırı uzun ve resmi destanlar yazma. Kullanıcının sorusu: "${userPrompt}"`
+              text: `Sen Discord sunucusunda hizmet veren samimi, esprili, zeki ve yardımsever bir asistansın. Adın: Boom Bot. Kullanıcıya Türkçe olarak samimi, doğal ve sohbet ortamına uygun şekilde cevap ver. Aşırı resmi veya aşırı uzun destanlar yazma. Kullanıcının sorusu: "${userPrompt}"`
             }]
           }]
         })
