@@ -5,6 +5,7 @@ const path = require('path');
 const { 
   Client, 
   GatewayIntentBits, 
+  Partials,
   EmbedBuilder, 
   PermissionFlagsBits, 
   AuditLogEvent,
@@ -35,16 +36,17 @@ const client = new Client({
     GatewayIntentBits.GuildVoiceStates,
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildModeration,
+    GatewayIntentBits.GuildExpressions
   ],
+  partials: [Partials.Message, Partials.Channel, Partials.GuildMember, Partials.User]
 });
 
 // Link Uyarıları Hafızası
 const linkWarnings = new Map();
-let lastValoNewsUrl = ''; // Son paylaşılan haberin hafızası
+let lastValoNewsUrl = '';
 
 // ================= VALORANT AJANLARI LİSTESİ ================= //
 const valorantAgents = [
-  // Düellocular
   { name: 'Jett', role: 'Düellocu 🗡️', color: '#87CEEB', desc: 'Çevik, rüzgar gibi hızlı ve agresif oyun tarzı için 1 numara!' },
   { name: 'Reyna', role: 'Düellocu 🗡️', color: '#8A2BE2', desc: 'Birebir çatışmalarda rakipleri eritmek ve maçı taşımak için mükemmel.' },
   { name: 'Raze', role: 'Düellocu 🗡️', color: '#FF4500', desc: 'Patlayıcı çantalar ve roketatarla alan kontrolünü ele geçir!' },
@@ -52,24 +54,18 @@ const valorantAgents = [
   { name: 'Yoru', role: 'Düellocu 🗡️', color: '#1E90FF', desc: 'Boyutlar arası geçiş yap, rakipleri sahte seslerle şaşırt!' },
   { name: 'Neon', role: 'Düellocu 🗡️', color: '#00FFFF', desc: 'Yüksek elektrik hızı ve kayma mekaniğiyle düşmanları gafil avla!' },
   { name: 'Iso', role: 'Düellocu 🗡️', color: '#9370DB', desc: 'Kalkanını aç ve rakiplerini 1v1 arenasına çekerek infaz et!' },
-  
-  // Öncüler
   { name: 'Sova', role: 'Öncü 🏹', color: '#4682B4', desc: 'Görüş ve şok oklarıyla haritanın her köşesinden bilgi topla.' },
   { name: 'Breach', role: 'Öncü 💥', color: '#CD853F', desc: 'Duvarların arkasından sarsıntı ve flaş yağdırarak alanı temizle!' },
   { name: 'Skye', role: 'Öncü 🦅', color: '#2E8B57', desc: 'Kuşlarınla düşmanları kör et ve kurtlarınla rakipleri avla.' },
   { name: 'KAY/O', role: 'Öncü 🤖', color: '#708090', desc: 'Bıçağınla düşman yeteneklerini tamamen kilitle ve sustur!' },
   { name: 'Fade', role: 'Öncü 👁️', color: '#2F4F4F', desc: 'Gölgelerle düşmanların peşine düş ve kulaklarını sağır et!' },
   { name: 'Gekko', role: 'Öncü 🦎', color: '#7FFF00', desc: 'Kankalarınla spike kur, kör et ve yeteneklerini yerden geri topla!' },
-  
-  // Kontrol Uzmanları
   { name: 'Omen', role: 'Kontrol Uzmanı ☁️', color: '#483D8B', desc: 'Karanlık dumanlar at ve haritanın kör noktalarına ışınlan.' },
   { name: 'Brimstone', role: 'Kontrol Uzmanı ☄️', color: '#D2691E', desc: 'Gökyüzünden dumanlar indir ve ultinle alanı yakıp kül et!' },
   { name: 'Viper', role: 'Kontrol Uzmanı 🐍', color: '#006400', desc: 'Zehirli gaz bulutu ve perde ile siteleri tek başına tut!' },
   { name: 'Astra', role: 'Kontrol Uzmanı 🌌', color: '#4B0082', desc: 'Kozmik formda yıldızlar yerleştirip haritayı uzaktan yönet.' },
   { name: 'Harbor', role: 'Kontrol Uzmanı 🌊', color: '#008080', desc: 'Su kalkanları ve dev dalgalarla takımına güvenli geçiş sağla.' },
   { name: 'Clove', role: 'Kontrol Uzmanı 🦋', color: '#DA70D6', desc: 'Öldükten sonra bile duman atabilen cesur ve korkusuz kelebek!' },
-
-  // Gözcüler
   { name: 'Killjoy', role: 'Gözcü 🤖', color: '#FFD700', desc: 'Taretlerin ve alarm botlarınla bombalama alanını kaleye dönüştür!' },
   { name: 'Cypher', role: 'Gözcü 🕵️', color: '#A9A9A9', desc: 'Gizli kameralar ve tuzak telleriyle rakipten hiçbir şey kaçmaz.' },
   { name: 'Sage', role: 'Gözcü 🧊', color: '#00FA9A', desc: 'Buz duvarıyla yolu kapat, takım arkadaşlarını iyileştir ve dirilt!' },
@@ -126,7 +122,7 @@ const kufurler = [
 
 function getLogChannel(guild) {
   if (!guild) return null;
-  return guild.channels.cache.find(c => c.name.includes('log') || c.name.includes('mod-log'));
+  return guild.channels.cache.find(c => c.name.includes('mod-log') || c.name.includes('modlog') || c.name.includes('log'));
 }
 
 function getWelcomeChannel(guild) {
@@ -149,7 +145,6 @@ function getLevelChannel(guild) {
   );
 }
 
-// Valorant Haber Kanalı Bulucu
 function getValoNewsChannel(guild) {
   if (!guild) return null;
   return guild.channels.cache.find(c => 
@@ -172,7 +167,7 @@ function isAuthorized(member) {
   );
 }
 
-// ================= VALORANT HABER ÇEKİCİ FONKSİYON ================= //
+// ================= VALORANT HABER ÇEKİCİ ================= //
 async function fetchLatestValoNews() {
   try {
     const res = await fetch('https://playvalorant.com/page-data/tr-tr/news/page-data.json');
@@ -195,17 +190,15 @@ async function fetchLatestValoNews() {
   return null;
 }
 
-// ================= BOT DURUMU & OTOMATİK HABER KONTROLÜ ================= //
+// ================= BOT DURUMU & OTOMATİK HABERLER ================= //
 
 client.once('ready', async () => {
   console.log(`🤖 Bot aktif! ${client.user.tag} olarak giriş yapıldı.`);
   console.log(`💾 Toplam ${userLevelMap.size} kullanıcının seviye verisi yüklendi.`);
 
-  // İlk açılışta son haberin linkini hafızaya al (Eski haberi spamlamasın)
   const initialNews = await fetchLatestValoNews();
   if (initialNews) lastValoNewsUrl = initialNews.url;
 
-  // 👁️ "İzliyor" Durumları (6 saniyede bir sırayla değişir)
   const durumlar = [
     '!yardım',
     'Beni etiketle soru sor!',
@@ -220,7 +213,7 @@ client.once('ready', async () => {
     client.user.setActivity(durumlar[index], { type: 3 });
   }, 6000);
 
-  // 🔄 15 Dakikada Bir Otomatik Valorant Haber Kontrolü
+  // 15 Dakikada Bir Otomatik Haber Kontrolü
   setInterval(async () => {
     const latestNews = await fetchLatestValoNews();
     if (latestNews && latestNews.url && latestNews.url !== lastValoNewsUrl) {
@@ -247,42 +240,271 @@ client.once('ready', async () => {
   }, 15 * 60 * 1000);
 });
 
-// ================= BUTON ETKİLEŞİMİ (VALORANT AJAN SEÇİCİ) ================= //
+// ================= 🔍 GELİŞMİŞ MOD-LOG SİSTEMİ (HER ŞEYİ KAYDET) ================= //
 
-client.on('interactionCreate', async (interaction) => {
-  if (!interaction.isButton()) return;
+// 1. MESAJ SİLİNDİ LOGU
+client.on('messageDelete', async (message) => {
+  if (!message.guild || message.author?.bot) return;
+  const logChannel = getLogChannel(message.guild);
+  if (!logChannel || logChannel.id === message.channel.id) return;
 
-  if (interaction.customId === 'btn_random_agent') {
-    const randomAgent = valorantAgents[Math.floor(Math.random() * valorantAgents.length)];
+  const embed = new EmbedBuilder()
+    .setColor('#ED4245')
+    .setTitle('🗑️ Bir Mesaj Silindi')
+    .addFields(
+      { name: '👤 Yazar', value: `${message.author} (\`${message.author.tag}\`)`, inline: true },
+      { name: '📍 Kanal', value: `${message.channel}`, inline: true },
+      { name: '📝 Silinen İçerik', value: message.content ? (message.content.length > 1000 ? message.content.substring(0, 1000) + '...' : message.content) : '*İçerik okunamadı veya medya içeriyordu.*' }
+    )
+    .setFooter({ text: 'K7e • Mod-Log Sistemi' })
+    .setTimestamp();
 
-    const agentEmbed = new EmbedBuilder()
-      .setColor(randomAgent.color)
-      .setTitle(`🎯 Bu Maçtaki Ajanın: **${randomAgent.name}**`)
-      .setAuthor({ name: 'VALORANT • Rastgele Ajan Seçici', iconURL: 'https://cdn-icons-png.flaticon.com/512/588/588258.png' })
+  logChannel.send({ embeds: [embed] }).catch(() => {});
+});
+
+// 2. MESAJ DÜZENLENDİ LOGU
+client.on('messageUpdate', async (oldMessage, newMessage) => {
+  if (!oldMessage.guild || oldMessage.author?.bot) return;
+  if (oldMessage.content === newMessage.content) return; // İçerik değişmediyse (Örn: Link önizlemesi yüklendiğinde) yoksay
+  const logChannel = getLogChannel(oldMessage.guild);
+  if (!logChannel || logChannel.id === oldMessage.channel.id) return;
+
+  const embed = new EmbedBuilder()
+    .setColor('#FEE75C')
+    .setTitle('✏️ Bir Mesaj Düzenlendi')
+    .addFields(
+      { name: '👤 Yazar', value: `${oldMessage.author} (\`${oldMessage.author?.tag}\`)`, inline: true },
+      { name: '📍 Kanal', value: `${oldMessage.channel}`, inline: true },
+      { name: '📜 Eski Hali', value: oldMessage.content ? (oldMessage.content.length > 500 ? oldMessage.content.substring(0, 500) + '...' : oldMessage.content) : '*Eski içerik okunamadı.*' },
+      { name: '✨ Yeni Hali', value: newMessage.content ? (newMessage.content.length > 500 ? newMessage.content.substring(0, 500) + '...' : newMessage.content) : '*Yeni içerik okunamadı.*' }
+    )
+    .setFooter({ text: 'K7e • Mod-Log Sistemi' })
+    .setTimestamp();
+
+  logChannel.send({ embeds: [embed] }).catch(() => {});
+});
+
+// 3. KULLANICI GÜNCELLEMELERİ (Rol, Nickname, Timeout)
+client.on('guildMemberUpdate', async (oldMember, newMember) => {
+  const logChannel = getLogChannel(newMember.guild);
+  if (!logChannel) return;
+
+  // A. Timeout (Susturma)
+  if (!oldMember.isCommunicationDisabled() && newMember.isCommunicationDisabled()) {
+    const timeoutUntil = newMember.communicationDisabledUntilTimestamp;
+    const minutes = Math.ceil((timeoutUntil - Date.now()) / (1000 * 60));
+    let executor = 'Bilinmiyor / Yetkili';
+    try {
+      const fetchedLogs = await newMember.guild.fetchAuditLogs({ limit: 1, type: AuditLogEvent.MemberUpdate });
+      const timeoutLog = fetchedLogs.entries.first();
+      if (timeoutLog && timeoutLog.target.id === newMember.id && timeoutLog.executor) {
+        executor = `${timeoutLog.executor.tag}`;
+      }
+    } catch (err) {}
+
+    const embed = new EmbedBuilder()
+      .setColor('#E67E22')
+      .setTitle('⏰ Kullanıcıya Timeout Atıldı')
       .addFields(
-        { name: '🎭 Rol', value: `**${randomAgent.role}**`, inline: true },
-        { name: '💡 Taktik / Özellik', value: randomAgent.desc, inline: false }
+        { name: 'Susturulan', value: `${newMember.user} (\`${newMember.user.tag}\`)`, inline: true },
+        { name: 'İşlemi Yapan', value: executor, inline: true },
+        { name: 'Süre', value: `~${minutes} dakika` }
       )
-      .setFooter({ text: 'K7e • Bol şans ve iyi vuruşlar!' })
+      .setFooter({ text: 'K7e • Mod-Log Sistemi' })
       .setTimestamp();
 
-    await interaction.reply({ embeds: [agentEmbed], ephemeral: true });
+    return logChannel.send({ embeds: [embed] }).catch(() => {});
+  }
+
+  // B. Takma Ad (Nickname) Değişimi
+  if (oldMember.nickname !== newMember.nickname) {
+    const embed = new EmbedBuilder()
+      .setColor('#5865F2')
+      .setTitle('🏷️ Kullanıcı Takma Adı Değiştirildi')
+      .addFields(
+        { name: '👤 Kullanıcı', value: `${newMember.user} (\`${newMember.user.tag}\`)`, inline: false },
+        { name: 'Eski İsim', value: oldMember.nickname || oldMember.user.username, inline: true },
+        { name: 'Yeni İsim', value: newMember.nickname || newMember.user.username, inline: true }
+      )
+      .setFooter({ text: 'K7e • Mod-Log Sistemi' })
+      .setTimestamp();
+
+    return logChannel.send({ embeds: [embed] }).catch(() => {});
+  }
+
+  // C. Rol Ekleme / Çıkarma
+  if (oldMember.roles.cache.size !== newMember.roles.cache.size) {
+    const addedRoles = newMember.roles.cache.filter(role => !oldMember.roles.cache.has(role.id));
+    const removedRoles = oldMember.roles.cache.filter(role => !newMember.roles.cache.has(role.id));
+
+    if (addedRoles.size > 0) {
+      const embed = new EmbedBuilder()
+        .setColor('#57F287')
+        .setTitle('➕ Kullanıcıya Rol Eklendi')
+        .addFields(
+          { name: '👤 Kullanıcı', value: `${newMember.user} (\`${newMember.user.tag}\`)`, inline: true },
+          { name: 'Verilen Rol(ler)', value: addedRoles.map(r => `${r}`).join(', '), inline: true }
+        )
+        .setFooter({ text: 'K7e • Mod-Log Sistemi' })
+        .setTimestamp();
+
+      logChannel.send({ embeds: [embed] }).catch(() => {});
+    }
+
+    if (removedRoles.size > 0) {
+      const embed = new EmbedBuilder()
+        .setColor('#ED4245')
+        .setTitle('➖ Kullanıcıdan Rol Alındı')
+        .addFields(
+          { name: '👤 Kullanıcı', value: `${newMember.user} (\`${newMember.user.tag}\`)`, inline: true },
+          { name: 'Alınan Rol(ler)', value: removedRoles.map(r => `${r.name}`).join(', '), inline: true }
+        )
+        .setFooter({ text: 'K7e • Mod-Log Sistemi' })
+        .setTimestamp();
+
+      logChannel.send({ embeds: [embed] }).catch(() => {});
+    }
   }
 });
 
-// ================= BAN & TIMEOUT LOGLARI ================= //
+// 4. KANAL OLUŞTURULDU LOGU
+client.on('channelCreate', async (channel) => {
+  if (!channel.guild) return;
+  const logChannel = getLogChannel(channel.guild);
+  if (!logChannel) return;
 
+  const embed = new EmbedBuilder()
+    .setColor('#57F287')
+    .setTitle('📁 Yeni Kanal Oluşturuldu')
+    .addFields(
+      { name: 'Kanal Adı', value: `\`#${channel.name}\``, inline: true },
+      { name: 'Kanal Türü', value: channel.type === 2 ? 'Ses Kanalı 🔊' : 'Metin Kanalı 💬', inline: true }
+    )
+    .setFooter({ text: 'K7e • Mod-Log Sistemi' })
+    .setTimestamp();
+
+  logChannel.send({ embeds: [embed] }).catch(() => {});
+});
+
+// 5. KANAL SİLİNDİ LOGU
+client.on('channelDelete', async (channel) => {
+  if (!channel.guild) return;
+  const logChannel = getLogChannel(channel.guild);
+  if (!logChannel) return;
+
+  const embed = new EmbedBuilder()
+    .setColor('#ED4245')
+    .setTitle('🗑️ Bir Kanal Silindi')
+    .addFields({ name: 'Silinen Kanal', value: `\`#${channel.name}\``, inline: true })
+    .setFooter({ text: 'K7e • Mod-Log Sistemi' })
+    .setTimestamp();
+
+  logChannel.send({ embeds: [embed] }).catch(() => {});
+});
+
+// 6. ROL OLUŞTURULDU / SİLİNDİ LOGU
+client.on('roleCreate', async (role) => {
+  const logChannel = getLogChannel(role.guild);
+  if (!logChannel) return;
+
+  const embed = new EmbedBuilder()
+    .setColor('#57F287')
+    .setTitle('🎭 Yeni Rol Oluşturuldu')
+    .addFields({ name: 'Rol Adı', value: `${role} (\`${role.name}\`)`, inline: true })
+    .setFooter({ text: 'K7e • Mod-Log Sistemi' })
+    .setTimestamp();
+
+  logChannel.send({ embeds: [embed] }).catch(() => {});
+});
+
+client.on('roleDelete', async (role) => {
+  const logChannel = getLogChannel(role.guild);
+  if (!logChannel) return;
+
+  const embed = new EmbedBuilder()
+    .setColor('#ED4245')
+    .setTitle('🗑️ Bir Rol Silindi')
+    .addFields({ name: 'Silinen Rol', value: `\`${role.name}\``, inline: true })
+    .setFooter({ text: 'K7e • Mod-Log Sistemi' })
+    .setTimestamp();
+
+  logChannel.send({ embeds: [embed] }).catch(() => {});
+});
+
+// 7. SUNUCU AYARLARI GÜNCELLENDİ (İsim, İkon)
+client.on('guildUpdate', async (oldGuild, newGuild) => {
+  const logChannel = getLogChannel(newGuild);
+  if (!logChannel) return;
+
+  if (oldGuild.name !== newGuild.name) {
+    const embed = new EmbedBuilder()
+      .setColor('#5865F2')
+      .setTitle('🏰 Sunucu Adı Değiştirildi')
+      .addFields(
+        { name: 'Eski İsim', value: `\`${oldGuild.name}\``, inline: true },
+        { name: 'Yeni İsim', value: `\`${newGuild.name}\``, inline: true }
+      )
+      .setFooter({ text: 'K7e • Mod-Log Sistemi' })
+      .setTimestamp();
+
+    logChannel.send({ embeds: [embed] }).catch(() => {});
+  }
+});
+
+// 8. SES KANALI HAREKETLERİ (Giriş, Çıkış, Oda Değiştirme)
+client.on('voiceStateUpdate', async (oldState, newState) => {
+  const logChannel = getLogChannel(newState.guild || oldState.guild);
+  if (!logChannel) return;
+
+  const member = newState.member || oldState.member;
+  if (!member || member.user.bot) return;
+
+  // A. Ses Kanalına Giriş
+  if (!oldState.channelId && newState.channelId) {
+    const embed = new EmbedBuilder()
+      .setColor('#57F287')
+      .setTitle('🔊 Ses Kanalına Katıldı')
+      .setDescription(`${member} (\`${member.user.tag}\`) kullanıcısı **${newState.channel.name}** odasına bağlandı.`)
+      .setFooter({ text: 'K7e • Mod-Log Sistemi' })
+      .setTimestamp();
+    return logChannel.send({ embeds: [embed] }).catch(() => {});
+  }
+
+  // B. Ses Kanalından Çıkış
+  if (oldState.channelId && !newState.channelId) {
+    const embed = new EmbedBuilder()
+      .setColor('#ED4245')
+      .setTitle('🔇 Ses Kanalından Ayrıldı')
+      .setDescription(`${member} (\`${member.user.tag}\`) kullanıcısı **${oldState.channel.name}** odasından ayrıldı.`)
+      .setFooter({ text: 'K7e • Mod-Log Sistemi' })
+      .setTimestamp();
+    return logChannel.send({ embeds: [embed] }).catch(() => {});
+  }
+
+  // C. Ses Kanalı Değiştirme
+  if (oldState.channelId && newState.channelId && oldState.channelId !== newState.channelId) {
+    const embed = new EmbedBuilder()
+      .setColor('#5865F2')
+      .setTitle('🔀 Ses Kanalı Değiştirdi')
+      .setDescription(`${member} kullanıcısı **${oldState.channel.name}** odasından ➔ **${newState.channel.name}** odasına geçti.`)
+      .setFooter({ text: 'K7e • Mod-Log Sistemi' })
+      .setTimestamp();
+    return logChannel.send({ embeds: [embed] }).catch(() => {});
+  }
+});
+
+// 9. BAN VE BAN KALDIRMA LOGLARI
 client.on('guildBanAdd', async (ban) => {
   const logChannel = getLogChannel(ban.guild);
   if (!logChannel) return;
-  let executor = 'Bilinmiyor / Otomatik Sistem';
+  let executor = 'Bilinmiyor / Yetkili';
   let reason = 'Sebep Belirtilmedi';
 
   try {
     const fetchedLogs = await ban.guild.fetchAuditLogs({ limit: 1, type: AuditLogEvent.MemberBanAdd });
     const banLog = fetchedLogs.entries.first();
     if (banLog && banLog.target.id === ban.user.id) {
-      if (banLog.executor) executor = `${banLog.executor} (${banLog.executor.tag})`;
+      if (banLog.executor) executor = `${banLog.executor.tag}`;
       if (banLog.reason) reason = banLog.reason;
     }
   } catch (err) {}
@@ -291,43 +513,28 @@ client.on('guildBanAdd', async (ban) => {
     .setColor('#992D22')
     .setTitle('🔨 Kullanıcı Yasaklandı (Ban)')
     .addFields(
-      { name: 'Yasaklanan', value: `${ban.user} (${ban.user.tag})`, inline: true },
+      { name: 'Yasaklanan', value: `${ban.user} (\`${ban.user.tag}\`)`, inline: true },
       { name: 'Yetkili', value: executor, inline: true },
       { name: 'Sebep', value: reason }
     )
+    .setFooter({ text: 'K7e • Mod-Log Sistemi' })
     .setTimestamp();
 
   logChannel.send({ embeds: [embed] }).catch(() => {});
 });
 
-client.on('guildMemberUpdate', async (oldMember, newMember) => {
-  const logChannel = getLogChannel(newMember.guild);
+client.on('guildBanRemove', async (ban) => {
+  const logChannel = getLogChannel(ban.guild);
   if (!logChannel) return;
 
-  if (!oldMember.isCommunicationDisabled() && newMember.isCommunicationDisabled()) {
-    const timeoutUntil = newMember.communicationDisabledUntilTimestamp;
-    const minutes = Math.ceil((timeoutUntil - Date.now()) / (1000 * 60));
-    let executor = 'Bilinmiyor / Otomatik Sistem';
-    try {
-      const fetchedLogs = await newMember.guild.fetchAuditLogs({ limit: 1, type: AuditLogEvent.MemberUpdate });
-      const timeoutLog = fetchedLogs.entries.first();
-      if (timeoutLog && timeoutLog.target.id === newMember.id && timeoutLog.executor) {
-        executor = `${timeoutLog.executor} (${timeoutLog.executor.tag})`;
-      }
-    } catch (err) {}
+  const embed = new EmbedBuilder()
+    .setColor('#57F287')
+    .setTitle('🔓 Yasak Kaldırıldı (Unban)')
+    .addFields({ name: 'Kullanıcı', value: `${ban.user} (\`${ban.user.tag}\`)`, inline: true })
+    .setFooter({ text: 'K7e • Mod-Log Sistemi' })
+    .setTimestamp();
 
-    const embed = new EmbedBuilder()
-      .setColor('#E67E22')
-      .setTitle('⏰ Kullanıcıya Timeout Atıldı')
-      .addFields(
-        { name: 'Susturulan', value: `${newMember.user}`, inline: true },
-        { name: 'Yetkili', value: executor, inline: true },
-        { name: 'Süre', value: `~${minutes} dk (<t:${Math.floor(timeoutUntil / 1000)}:R>)` }
-      )
-      .setTimestamp();
-
-    return logChannel.send({ embeds: [embed] }).catch(() => {});
-  }
+  logChannel.send({ embeds: [embed] }).catch(() => {});
 });
 
 // ================= HOŞ GELDİN & OTOMATİK ROL ================= //
@@ -360,6 +567,29 @@ client.on('guildMemberRemove', (member) => {
       .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
       .setTimestamp();
     welcomeChannel.send({ embeds: [leaveEmbed] }).catch(() => {});
+  }
+});
+
+// ================= BUTON ETKİLEŞİMİ (VALORANT AJAN SEÇİCİ) ================= //
+
+client.on('interactionCreate', async (interaction) => {
+  if (!interaction.isButton()) return;
+
+  if (interaction.customId === 'btn_random_agent') {
+    const randomAgent = valorantAgents[Math.floor(Math.random() * valorantAgents.length)];
+
+    const agentEmbed = new EmbedBuilder()
+      .setColor(randomAgent.color)
+      .setTitle(`🎯 Bu Maçtaki Ajanın: **${randomAgent.name}**`)
+      .setAuthor({ name: 'VALORANT • Rastgele Ajan Seçici', iconURL: 'https://cdn-icons-png.flaticon.com/512/588/588258.png' })
+      .addFields(
+        { name: '🎭 Rol', value: `**${randomAgent.role}**`, inline: true },
+        { name: '💡 Taktik / Özellik', value: randomAgent.desc, inline: false }
+      )
+      .setFooter({ text: 'K7e • Bol şans ve iyi vuruşlar!' })
+      .setTimestamp();
+
+    await interaction.reply({ embeds: [agentEmbed], ephemeral: true });
   }
 });
 
@@ -459,13 +689,13 @@ client.on('messageCreate', async (message) => {
     }
   }
 
-  // 4. SOHBET XP VE SEVİYE SİSTEMİ (Limitsiz ve Kalıcı)
+  // 4. SOHBET XP VE SEVİYE SİSTEMİ
   if (!content.startsWith('!')) {
     let userData = userLevelMap.get(userKey) || { xp: 0, level: 1, lastXpTime: 0 };
     const now = Date.now();
 
     if (now - userData.lastXpTime >= 5000) {
-      const earnedXP = Math.floor(Math.random() * 16) + 25; // 25-40 XP
+      const earnedXP = Math.floor(Math.random() * 16) + 25;
       userData.xp += earnedXP;
       userData.lastXpTime = now;
 
@@ -492,7 +722,7 @@ client.on('messageCreate', async (message) => {
 
   // ================= KOMUTLAR ================= //
 
-  // 📰 VALORANT ANLIK EN SON HABERİ GETİR (!valohaber)
+  // 📰 VALORANT HABER KOMUTU (!valohaber)
   if (content === '!valohaber' || content === '!valo-haber') {
     const news = await fetchLatestValoNews();
     if (!news) return message.reply('❌ En son Valorant haberi alınamadı, lütfen daha sonra tekrar deneyin.');
@@ -511,7 +741,7 @@ client.on('messageCreate', async (message) => {
     return message.reply({ embeds: [newsEmbed] });
   }
 
-  // 🎮 VALORANT RASTGELE AJAN PANELİ (!ajanpanel / !ajan-panel)
+  // 🎮 VALORANT AJAN PANELİ KOMUTU (!ajanpanel)
   if (content === '!ajanpanel' || content === '!ajan-panel') {
     if (!isAuthorized(message.member)) {
       return message.reply('❌ Bu komutu sadece **Yönetici** veya **Moderatör** rolündekiler kullanabilir.');
@@ -566,17 +796,15 @@ client.on('messageCreate', async (message) => {
             '• `!admin` : Bu yönetim panelini açar.'
         },
         {
-          name: '⚙️ Aktif Koruma Modülleri',
+          name: '⚙️ Aktif Denetim & Koruma Modülleri',
           value: 
+            '• 🟢 **Mod-Log Sistemi:** Aktif (Mesaj silme/düzenleme, rol, ses, kanal, isim değişimleri).\n' +
             '• 🟢 **Yapay Zeka:** Açık (Botu etiketleyerek soru sorulabilir).\n' +
             '• 🟢 **Valorant Otomatik Haber:** Açık (`#valorant-haberleri` kanalında 15 dk bir kontrol).\n' +
             '• 🟢 **Valorant Ajan Seçici:** Açık (`!ajanpanel`).\n' +
             '• 🟢 **Limitsiz Seviye Sistemi:** Açık (Veriler anında diske kaydedilir).\n' +
             '• 🟢 **Küfür Filtresi:** Açık (Yetkililer hariç mesajları siler).\n' +
-            '• 🟢 **Reklam / Link Engeli:** Açık (5 aşamalı ceza sistemi).\n' +
-            '• 🟢 **Otomatik Rol:** Açık (Yeni üyelere `Kayıtlı Üye` rolü tanımlanır).\n' +
-            '• 🟢 **Karşılama Sistemi:** Açık (`📙・hoşgeldiniz` kanalında aktif).\n' +
-            '• 🟢 **Mod-Log Sistemi:** Açık (`#log` veya `#mod-log` kanalında aktif).'
+            '• 🟢 **Reklam / Link Engeli:** Açık (5 aşamalı ceza sistemi).'
         },
         {
           name: '📊 Sunucu & Bot Bilgisi',
@@ -669,7 +897,7 @@ client.on('messageCreate', async (message) => {
     }
   }
 
-  // 📈 SEVİYE / RANK KOMUTLARI (Sadece #level-bilgi kanalında çalışır)
+  // 📈 SEVİYE / RANK KOMUTLARI
   if (
     content === '!seviye' || content === '!level' || content === '!rank' || content.startsWith('!seviye ') || content.startsWith('!level ') || content.startsWith('!rank ') ||
     content === '!liderlik' || content === '!top'
@@ -775,7 +1003,7 @@ client.on('messageCreate', async (message) => {
         { name: '🧠 Yapay Zeka', value: 'Beni etiketleyip istediğin soruyu sorabilirsin! (Örn: `@Boom Bot nasılsın?`)' },
         { name: '🎯 Valorant Özellikleri', value: '• `#rastgele-ajan` kanalında butonla rastgele ajan seçimi.\n• `!valohaber` - En son Valorant yamasını/haberini gösterir.\n• Otomatik haberler `#valorant-haberleri` kanalına düşer.' },
         { name: '⭐ Seviye Sistemi (#level-bilgi)', value: '`!seviye` - Seviye kartınızı gösterir.\n`!liderlik` - Sunucu sıralamasını gösterir.' },
-        { name: '🛡️ Otomatik Güvenlik', value: '• **Küfür Engeli:** Otomatik silinir.\n• **Link Engeli:** Kademeli uyarı/timeout/ban.' },
+        { name: '🛡️ Otomatik Güvenlik & Denetim', value: '• **Mod-Log:** Sunucudaki tüm değişimler kaydedilir.\n• **Küfür Engeli:** Otomatik silinir.\n• **Link Engeli:** Kademeli uyarı/timeout/ban.' },
         { name: '🎮 Eğlence / Bilgi', value: '`!zar`, `!yazıtura`, `!ping`, `!avatar`, `!sunucu`' }
       )
       .setFooter({ text: 'Geliştirici: K7e' })
