@@ -125,10 +125,26 @@ function isAuthorized(member) {
   );
 }
 
+// ================= BOT HAZIR OLDUĞUNDA VE DURUM (ACTIVITY) AYARI ================= //
+
 client.once('ready', () => {
   console.log(`🤖 Bot aktif! ${client.user.tag} olarak giriş yapıldı.`);
   console.log(`💾 Toplam ${userLevelMap.size} kullanıcının seviye verisi yüklendi.`);
-  client.user.setActivity('Beni etiketle & soru sor!', { type: 3 });
+
+  // 👁️ "İzliyor" Durumları (6 saniyede bir sırayla değişir)
+  const durumlar = [
+    '!yardım',
+    'Beni etiketle soru sor!',
+    'K7e'
+  ];
+
+  let index = 0;
+  client.user.setActivity(durumlar[0], { type: 3 }); // 3 = Watching (İzliyor)
+
+  setInterval(() => {
+    index = (index + 1) % durumlar.length;
+    client.user.setActivity(durumlar[index], { type: 3 });
+  }, 6000);
 });
 
 // ================= BAN & TIMEOUT LOGLARI ================= //
@@ -392,7 +408,7 @@ client.on('messageCreate', async (message) => {
           value: `• **Gecikme (Ping):** ${client.ws.ping}ms\n• **Toplam Üye:** ${message.guild.memberCount}`
         }
       )
-      .setFooter({ text: 'Bu panel sadece yetkililere özeldir.' })
+      .setFooter({ text: 'K7e • Yönetim Masası' })
       .setTimestamp();
 
     return message.reply({ embeds: [adminEmbed] });
@@ -507,7 +523,7 @@ client.on('messageCreate', async (message) => {
           { name: '⭐ Toplam XP', value: `**${userData.xp}** / ${neededXP} XP`, inline: true },
           { name: '📊 İlerleme Durumu', value: createProgressBar(userData.xp, neededXP), inline: false }
         )
-        .setFooter({ text: 'Sohbet ederek sınırsız XP kazanabilirsiniz!' })
+        .setFooter({ text: 'K7e • Sohbet ederek sınırsız XP kazanabilirsiniz!' })
         .setTimestamp();
 
       return message.reply({ embeds: [levelEmbed] });
@@ -538,6 +554,7 @@ client.on('messageCreate', async (message) => {
         .setColor('#FFD700')
         .setTitle(`🏆 ${message.guild.name} • Seviye Liderlik Tablosu`)
         .setDescription(description)
+        .setFooter({ text: 'K7e • Liderlik Sıralaması' })
         .setTimestamp();
 
       return message.reply({ embeds: [leaderboardEmbed] });
@@ -585,6 +602,7 @@ client.on('messageCreate', async (message) => {
         { name: '🛡️ Otomatik Güvenlik', value: '• **Küfür Engeli:** Otomatik silinir.\n• **Link Engeli:** Kademeli uyarı/timeout/ban.' },
         { name: '🎮 Eğlence / Bilgi', value: '`!zar`, `!yazıtura`, `!ping`, `!avatar`, `!sunucu`' }
       )
+      .setFooter({ text: 'Geliştirici: K7e' })
       .setTimestamp();
 
     return message.reply({ embeds: [yardımEmbed] });
