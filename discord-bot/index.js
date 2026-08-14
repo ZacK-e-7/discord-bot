@@ -40,6 +40,7 @@ const client = new Client({
 
 // Link Uyarıları Hafızası
 const linkWarnings = new Map();
+let lastValoNewsUrl = ''; // Son paylaşılan haberin hafızası
 
 // ================= VALORANT AJANLARI LİSTESİ ================= //
 const valorantAgents = [
@@ -148,6 +149,19 @@ function getLevelChannel(guild) {
   );
 }
 
+// Valorant Haber Kanalı Bulucu
+function getValoNewsChannel(guild) {
+  if (!guild) return null;
+  return guild.channels.cache.find(c => 
+    c.name.includes('valorant-haber') || 
+    c.name.includes('valohaber') || 
+    c.name.includes('valo-haber') || 
+    c.name.includes('oyun-haber') ||
+    c.name.includes('oyun-haberleri') ||
+    c.name.includes('haberler')
+  );
+}
+
 function isAuthorized(member) {
   if (!member) return false;
   if (member.permissions.has(PermissionFlagsBits.Administrator)) return true;
@@ -158,12 +172,40 @@ function isAuthorized(member) {
   );
 }
 
-// ================= BOT DURUMU (WATCHING) ================= //
+// ================= VALORANT HABER ÇEKİCİ FONKSİYON ================= //
+async function fetchLatestValoNews() {
+  try {
+    const res = await fetch('https://playvalorant.com/page-data/tr-tr/news/page-data.json');
+    if (!res.ok) return null;
+    const data = await res.json();
+    const articles = data?.result?.data?.allContentstackArticles?.nodes;
+    if (articles && articles.length > 0) {
+      const latest = articles[0];
+      return {
+        title: latest.title || 'Yeni Valorant Haberi',
+        description: latest.description || 'Detaylar ve yama notları için resmi sayfayı ziyaret edin.',
+        url: latest.url?.url ? (latest.url.url.startsWith('http') ? latest.url.url : `https://playvalorant.com/tr-tr${latest.url.url}`) : 'https://playvalorant.com/tr-tr/news/',
+        image: latest.banner?.url || null,
+        category: latest.category?.[0]?.title || 'GÜNCELLEME & HABER'
+      };
+    }
+  } catch (err) {
+    console.error('Valorant haber çekilemedi:', err);
+  }
+  return null;
+}
 
-client.once('ready', () => {
+// ================= BOT DURUMU & OTOMATİK HABER KONTROLÜ ================= //
+
+client.once('ready', async () => {
   console.log(`🤖 Bot aktif! ${client.user.tag} olarak giriş yapıldı.`);
   console.log(`💾 Toplam ${userLevelMap.size} kullanıcının seviye verisi yüklendi.`);
 
+  // İlk açılışta son haberin linkini hafızaya al (Eski haberi spamlamasın)
+  const initialNews = await fetchLatestValoNews();
+  if (initialNews) lastValoNewsUrl = initialNews.url;
+
+  // 👁️ "İzliyor" Durumları (6 saniyede bir sırayla değişir)
   const durumlar = [
     '!yardım',
     'Beni etiketle soru sor!',
@@ -177,6 +219,32 @@ client.once('ready', () => {
     index = (index + 1) % durumlar.length;
     client.user.setActivity(durumlar[index], { type: 3 });
   }, 6000);
+
+  // 🔄 15 Dakikada Bir Otomatik Valorant Haber Kontrolü
+  setInterval(async () => {
+    const latestNews = await fetchLatestValoNews();
+    if (latestNews && latestNews.url && latestNews.url !== lastValoNewsUrl) {
+      lastValoNewsUrl = latestNews.url;
+
+      client.guilds.cache.forEach(guild => {
+        const valoChannel = getValoNewsChannel(guild);
+        if (valoChannel) {
+          const newsEmbed = new EmbedBuilder()
+            .setColor('#FF4655')
+            .setTitle(`📢 Yeni Valorant Haberi: ${latestNews.title}`)
+            .setURL(latestNews.url)
+            .setDescription(`${latestNews.description}\n\n👉 [Haberi Resmi Sitede Oku](${latestNews.url})`)
+            .addFields({ name: '🏷️ Kategori', value: latestNews.category, inline: true })
+            .setFooter({ text: 'K7e • Otomatik Valorant Haber Sistemi' })
+            .setTimestamp();
+
+          if (latestNews.image) newsEmbed.setImage(latestNews.image);
+
+          valoChannel.send({ content: '🔔 **Yeni bir Valorant güncellemesi / haberi paylaşıldı!**', embeds: [newsEmbed] }).catch(() => {});
+        }
+      });
+    }
+  }, 15 * 60 * 1000);
 });
 
 // ================= BUTON ETKİLEŞİMİ (VALORANT AJAN SEÇİCİ) ================= //
@@ -198,7 +266,6 @@ client.on('interactionCreate', async (interaction) => {
       .setFooter({ text: 'K7e • Bol şans ve iyi vuruşlar!' })
       .setTimestamp();
 
-    // Sadece butona basan kişiye özel gizli mesaj
     await interaction.reply({ embeds: [agentEmbed], ephemeral: true });
   }
 });
@@ -398,7 +465,7 @@ client.on('messageCreate', async (message) => {
     const now = Date.now();
 
     if (now - userData.lastXpTime >= 5000) {
-      const earnedXP = Math.floor(Math.random() * 16) + 25;
+      const earnedXP = Math.floor(Math.random() * 16) + 25; // 25-40 XP
       userData.xp += earnedXP;
       userData.lastXpTime = now;
 
@@ -425,6 +492,25 @@ client.on('messageCreate', async (message) => {
 
   // ================= KOMUTLAR ================= //
 
+  // 📰 VALORANT ANLIK EN SON HABERİ GETİR (!valohaber)
+  if (content === '!valohaber' || content === '!valo-haber') {
+    const news = await fetchLatestValoNews();
+    if (!news) return message.reply('❌ En son Valorant haberi alınamadı, lütfen daha sonra tekrar deneyin.');
+
+    const newsEmbed = new EmbedBuilder()
+      .setColor('#FF4655')
+      .setTitle(`📢 ${news.title}`)
+      .setURL(news.url)
+      .setDescription(`${news.description}\n\n👉 [Haberi Resmi Sitede Oku](${news.url})`)
+      .addFields({ name: '🏷️ Kategori', value: news.category, inline: true })
+      .setFooter({ text: 'K7e • Valorant Güncel Haber' })
+      .setTimestamp();
+
+    if (news.image) newsEmbed.setImage(news.image);
+
+    return message.reply({ embeds: [newsEmbed] });
+  }
+
   // 🎮 VALORANT RASTGELE AJAN PANELİ (!ajanpanel / !ajan-panel)
   if (content === '!ajanpanel' || content === '!ajan-panel') {
     if (!isAuthorized(message.member)) {
@@ -434,7 +520,7 @@ client.on('messageCreate', async (message) => {
     await message.delete().catch(() => {});
 
     const panelEmbed = new EmbedBuilder()
-      .setColor('#FF4655') // Valorant Kırmızısı
+      .setColor('#FF4655')
       .setTitle('🎯 VALORANT RASTGELE AJAN SEÇİCİ')
       .setDescription(
         'Hangi ajanı oynayacağına karar veremedin mi? 🤔\n\n' +
@@ -471,6 +557,7 @@ client.on('messageCreate', async (message) => {
           name: '🛠️ Moderasyon & Kurulum Komutları',
           value: 
             '• `!ajanpanel` : Valorant butonlu rastgele ajan panelini kurar.\n' +
+            '• `!valohaber` : En son Valorant haberini getirir.\n' +
             '• `!xpekle [@üye] [miktar]` : Kullanıcıya XP ekler.\n' +
             '• `!sustur [@üye] [dakika] [sebep]` : Kullanıcıya timeout atar.\n' +
             '• `!sil [1-100]` : Belirtilen sayıda mesajı topluca siler.\n' +
@@ -482,8 +569,9 @@ client.on('messageCreate', async (message) => {
           name: '⚙️ Aktif Koruma Modülleri',
           value: 
             '• 🟢 **Yapay Zeka:** Açık (Botu etiketleyerek soru sorulabilir).\n' +
+            '• 🟢 **Valorant Otomatik Haber:** Açık (`#valorant-haberleri` kanalında 15 dk bir kontrol).\n' +
             '• 🟢 **Valorant Ajan Seçici:** Açık (`!ajanpanel`).\n' +
-            '• 🟢 **Limitsiz Seviye Sistemi:** Açık (Seviye sınırı yok, veriler diske kaydedilir).\n' +
+            '• 🟢 **Limitsiz Seviye Sistemi:** Açık (Veriler anında diske kaydedilir).\n' +
             '• 🟢 **Küfür Filtresi:** Açık (Yetkililer hariç mesajları siler).\n' +
             '• 🟢 **Reklam / Link Engeli:** Açık (5 aşamalı ceza sistemi).\n' +
             '• 🟢 **Otomatik Rol:** Açık (Yeni üyelere `Kayıtlı Üye` rolü tanımlanır).\n' +
@@ -581,7 +669,7 @@ client.on('messageCreate', async (message) => {
     }
   }
 
-  // 📈 SEVİYE / RANK KOMUTLARI
+  // 📈 SEVİYE / RANK KOMUTLARI (Sadece #level-bilgi kanalında çalışır)
   if (
     content === '!seviye' || content === '!level' || content === '!rank' || content.startsWith('!seviye ') || content.startsWith('!level ') || content.startsWith('!rank ') ||
     content === '!liderlik' || content === '!top'
@@ -685,7 +773,7 @@ client.on('messageCreate', async (message) => {
       .setTitle('🤖 Bot Komut & Sistem Listesi')
       .addFields(
         { name: '🧠 Yapay Zeka', value: 'Beni etiketleyip istediğin soruyu sorabilirsin! (Örn: `@Boom Bot nasılsın?`)' },
-        { name: '🎯 Valorant Ajan Seçici', value: '`#rastgele-ajan` kanalındaki butona basarak rastgele ajan seçebilirsin!' },
+        { name: '🎯 Valorant Özellikleri', value: '• `#rastgele-ajan` kanalında butonla rastgele ajan seçimi.\n• `!valohaber` - En son Valorant yamasını/haberini gösterir.\n• Otomatik haberler `#valorant-haberleri` kanalına düşer.' },
         { name: '⭐ Seviye Sistemi (#level-bilgi)', value: '`!seviye` - Seviye kartınızı gösterir.\n`!liderlik` - Sunucu sıralamasını gösterir.' },
         { name: '🛡️ Otomatik Güvenlik', value: '• **Küfür Engeli:** Otomatik silinir.\n• **Link Engeli:** Kademeli uyarı/timeout/ban.' },
         { name: '🎮 Eğlence / Bilgi', value: '`!zar`, `!yazıtura`, `!ping`, `!avatar`, `!sunucu`' }
