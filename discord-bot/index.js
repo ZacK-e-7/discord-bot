@@ -1,5 +1,7 @@
 require('dotenv').config();
 const express = require('express');
+const fs = require('fs');
+const path = require('path');
 const { 
   Client, 
   GatewayIntentBits, 
@@ -36,8 +38,35 @@ const client = new Client({
 // Link Uyarıları Hafızası
 const linkWarnings = new Map();
 
-// Seviye / XP Sistem Hafızası
-const userLevelMap = new Map();
+// ================= KALICI SEVİYE & XP SİSTEMİ ================= //
+const DATA_FILE = path.join(__dirname, 'levels.json');
+
+// Kayıtlı verileri dosyadan yükleme fonksiyonu
+function loadLevels() {
+  try {
+    if (fs.existsSync(DATA_FILE)) {
+      const data = fs.readFileSync(DATA_FILE, 'utf8');
+      const parsed = JSON.parse(data);
+      return new Map(Object.entries(parsed));
+    }
+  } catch (err) {
+    console.error('Kayıtlı seviye verileri okunurken hata oluştu:', err);
+  }
+  return new Map();
+}
+
+// Verileri dosyaya kalıcı olarak kaydetme fonksiyonu
+function saveLevels() {
+  try {
+    const obj = Object.fromEntries(userLevelMap);
+    fs.writeFileSync(DATA_FILE, JSON.stringify(obj, null, 2), 'utf8');
+  } catch (err) {
+    console.error('Seviye verileri kaydedilirken hata oluştu:', err);
+  }
+}
+
+// Bot başlarken kayıtlı verileri hafızaya al
+const userLevelMap = loadLevels();
 
 // Seviye İçin Gereken XP Hesaplama Fonksiyonu
 function getNeededXP(level) {
@@ -98,6 +127,7 @@ function isAuthorized(member) {
 
 client.once('ready', () => {
   console.log(`🤖 Bot aktif! ${client.user.tag} olarak giriş yapıldı.`);
+  console.log(`💾 Toplam ${userLevelMap.size} kullanıcının seviye verisi yüklendi.`);
   client.user.setActivity('Beni etiketle & soru sor!', { type: 3 });
 });
 
@@ -290,13 +320,13 @@ client.on('messageCreate', async (message) => {
     }
   }
 
-  // 4. SOHBET XP VE SEVİYE SİSTEMİ
+  // 4. SOHBET XP VE SEVİYE SİSTEMİ (Otomatik Dosyaya Kayıtlı)
   if (!content.startsWith('!')) {
     let userData = userLevelMap.get(userKey) || { xp: 0, level: 1, lastXpTime: 0 };
     const now = Date.now();
 
     if (now - userData.lastXpTime >= 60000) {
-      const earnedXP = Math.floor(Math.random() * 11) + 15;
+      const earnedXP = Math.floor(Math.random() * 11) + 15; // 15-25 XP
       userData.xp += earnedXP;
       userData.lastXpTime = now;
 
@@ -317,6 +347,7 @@ client.on('messageCreate', async (message) => {
       }
 
       userLevelMap.set(userKey, userData);
+      saveLevels(); // Kalıcı olarak levels.json dosyasına yaz!
     }
   }
 
@@ -340,7 +371,7 @@ client.on('messageCreate', async (message) => {
         },
         {
           name: '⚙️ Aktif Koruma Modülleri',
-          value: '• 🟢 **Yapay Zeka:** Açık (Botu etiketleyerek soru sorulabilir).\n• 🟢 **Küfür Filtresi:** Açık (Yetkililer hariç mesajları siler).\n• 🟢 **Reklam / Link Engeli:** Açık (5 aşamalı ceza sistemi).\n• 🟢 **Otomatik Rol:** Açık (Yeni üyelere `Kayıtlı Üye` rolü tanımlanır).\n• 🟢 **Karşılama Sistemi:** Açık (`📙・hoşgeldiniz` kanalında aktif).\n• 🟢 **Mod-Log Sistemi:** Açık (`#log` veya `#mod-log` kanalında aktif).'
+          value: '• 🟢 **Yapay Zeka:** Açık (Botu etiketleyerek soru sorulabilir).\n• 🟢 **Kalıcı Seviye Sistemi:** Açık (Veriler anında diske kaydedilir).\n• 🟢 **Küfür Filtresi:** Açık (Yetkililer hariç mesajları siler).\n• 🟢 **Reklam / Link Engeli:** Açık (5 aşamalı ceza sistemi).\n• 🟢 **Otomatik Rol:** Açık (Yeni üyelere `Kayıtlı Üye` rolü tanımlanır).\n• 🟢 **Karşılama Sistemi:** Açık (`📙・hoşgeldiniz` kanalında aktif).\n• 🟢 **Mod-Log Sistemi:** Açık (`#log` veya `#mod-log` kanalında aktif).'
         },
         {
           name: '📊 Sunucu & Bot Bilgisi',
@@ -382,7 +413,7 @@ client.on('messageCreate', async (message) => {
     }
   }
 
-  // 📈 SEVİYE / RANK KOMUTLARI
+  // 📈 SEVİYE / RANK KOMUTLARI (Sadece #level-bilgi kanalında çalışır)
   if (
     content === '!seviye' || content === '!level' || content === '!rank' || content.startsWith('!seviye ') || content.startsWith('!level ') || content.startsWith('!rank ') ||
     content === '!liderlik' || content === '!top'
