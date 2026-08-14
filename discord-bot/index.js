@@ -98,7 +98,7 @@ function isAuthorized(member) {
 
 client.once('ready', () => {
   console.log(`🤖 Bot aktif! ${client.user.tag} olarak giriş yapıldı.`);
-  client.user.setActivity('!yardım | Seviye & Koruma', { type: 3 });
+  client.user.setActivity('Beni etiketle & soru sor!', { type: 3 });
 });
 
 // ================= BAN & TIMEOUT LOGLARI ================= //
@@ -194,7 +194,7 @@ client.on('guildMemberRemove', (member) => {
   }
 });
 
-// ================= MESAJ DİNLEYİCİ (KORUMA, XP VE KOMUTLAR) ================= //
+// ================= MESAJ DİNLEYİCİ (KORUMA, AI, XP VE KOMUTLAR) ================= //
 
 client.on('messageCreate', async (message) => {
   if (message.author.bot || !message.guild) return;
@@ -239,19 +239,69 @@ client.on('messageCreate', async (message) => {
     return;
   }
 
-  // 3. SOHBET XP VE SEVİYE SİSTEMİ (Komut Değilse XP Ver)
+  // 3. 🧠 BOT ETİKETLENDİĞİNDE YAPAY ZEKA SOHBETİ
+  if (message.mentions.has(client.user.id) && !message.mentions.everyone) {
+    const userPrompt = message.content.replace(new RegExp(`<@!?${client.user.id}>`, 'g'), '').trim();
+
+    if (!userPrompt) {
+      return message.reply('Efendim? 😊 Bana bir soru sormak istersen etiketleyip sorunu yazabilirsin!\n*Örnek:* `@Bot nasılsın?`');
+    }
+
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return message.reply('⚠️ Render panelinde `GEMINI_API_KEY` tanımlı değil.');
+    }
+
+    try {
+      await message.channel.sendTyping();
+
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{
+            parts: [{
+              text: `Sen Discord sunucusunda çalışan zeki, esprili ve yardımsever bir asistansın. Kullanıcıya samimi, Türkçe ve kısa-öz bir cevap ver. Soru: "${userPrompt}"`
+            }]
+          }]
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.error) {
+        return message.reply(`❌ API Hatası: ${data.error.message || 'Bilinmeyen hata'}`);
+      }
+
+      const replyText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+
+      if (!replyText) {
+        return message.reply('Cevap üretilemedi, lütfen soruyu tekrar sor! 🤔');
+      }
+
+      if (replyText.length > 2000) {
+        return message.reply(replyText.substring(0, 1990) + '...');
+      }
+
+      return message.reply(replyText);
+    } catch (err) {
+      console.error('AI Hatası:', err);
+      return message.reply('❌ Bağlantı hatası oluştu, lütfen biraz sonra tekrar deneyin.');
+    }
+  }
+
+  // 4. SOHBET XP VE SEVİYE SİSTEMİ
   if (!content.startsWith('!')) {
     let userData = userLevelMap.get(userKey) || { xp: 0, level: 1, lastXpTime: 0 };
     const now = Date.now();
 
     if (now - userData.lastXpTime >= 60000) {
-      const earnedXP = Math.floor(Math.random() * 11) + 15; // 15-25 XP
+      const earnedXP = Math.floor(Math.random() * 11) + 15;
       userData.xp += earnedXP;
       userData.lastXpTime = now;
 
       const neededXP = getNeededXP(userData.level);
 
-      // Seviye Atlama Duyurusu -> Doğrudan #level-bilgi kanalına gider
       if (userData.xp >= neededXP) {
         userData.level += 1;
 
@@ -272,7 +322,7 @@ client.on('messageCreate', async (message) => {
 
   // ================= KOMUTLAR ================= //
 
-  // 👑 YÖNETİCİ & ADMIN KONTROL PANELİ (!admin / !yönetim)
+  // 👑 ADMIN KONTROL PANELİ
   if (content === '!admin' || content === '!yönetim' || content === '!yonetim') {
     if (!isAuthorized(message.member)) {
       return message.reply('❌ Bu komutu sadece **Yönetici** veya **Moderatör** rolündekiler kullanabilir.');
@@ -290,7 +340,7 @@ client.on('messageCreate', async (message) => {
         },
         {
           name: '⚙️ Aktif Koruma Modülleri',
-          value: '• 🟢 **Küfür Filtresi:** Açık (Yetkililer hariç mesajları siler).\n• 🟢 **Reklam / Link Engeli:** Açık (5 aşamalı ceza sistemi).\n• 🟢 **Otomatik Rol:** Açık (Yeni üyelere `Kayıtlı Üye` rolü tanımlanır).\n• 🟢 **Karşılama Sistemi:** Açık (`📙・hoşgeldiniz` kanalında aktif).\n• 🟢 **Mod-Log Sistemi:** Açık (`#log` veya `#mod-log` kanalında aktif).'
+          value: '• 🟢 **Yapay Zeka:** Açık (Botu etiketleyerek soru sorulabilir).\n• 🟢 **Küfür Filtresi:** Açık (Yetkililer hariç mesajları siler).\n• 🟢 **Reklam / Link Engeli:** Açık (5 aşamalı ceza sistemi).\n• 🟢 **Otomatik Rol:** Açık (Yeni üyelere `Kayıtlı Üye` rolü tanımlanır).\n• 🟢 **Karşılama Sistemi:** Açık (`📙・hoşgeldiniz` kanalında aktif).\n• 🟢 **Mod-Log Sistemi:** Açık (`#log` veya `#mod-log` kanalında aktif).'
         },
         {
           name: '📊 Sunucu & Bot Bilgisi',
@@ -303,7 +353,7 @@ client.on('messageCreate', async (message) => {
     return message.reply({ embeds: [adminEmbed] });
   }
 
-  // ⏰ TIMEOUT / SUSTURMA KOMUTU (!sustur / !timeout)
+  // ⏰ SUSTURMA / TIMEOUT KOMUTU
   if (content.startsWith('!sustur') || content.startsWith('!timeout')) {
     if (!isAuthorized(message.member)) return message.reply('❌ Bu komutu kullanmak için yetkiniz yok.');
     
@@ -332,7 +382,7 @@ client.on('messageCreate', async (message) => {
     }
   }
 
-  // 📈 SEVİYE / RANK KOMUTLARI (Sadece #level-bilgi kanalında çalışır)
+  // 📈 SEVİYE / RANK KOMUTLARI
   if (
     content === '!seviye' || content === '!level' || content === '!rank' || content.startsWith('!seviye ') || content.startsWith('!level ') || content.startsWith('!rank ') ||
     content === '!liderlik' || content === '!top'
@@ -403,7 +453,6 @@ client.on('messageCreate', async (message) => {
     return message.reply(`Aleykümselam ${message.author}! Hoş geldin 👋`);
   }
 
-  // 📜 KURALLAR KOMUTU (Sadece Yetkililer)
   if (content === '!kurallar') {
     if (!isAuthorized(message.member)) {
       return message.reply('❌ Bu komutu sadece **Yönetici** veya **Moderatör** rolündekiler kullanabilir.');
@@ -423,7 +472,6 @@ client.on('messageCreate', async (message) => {
     return message.channel.send({ embeds: [kurallarEmbed] });
   }
 
-  // 🤖 YARDIM KOMUTU (Sadece #bot-komut kanalında çalışır)
   if (content === '!yardım' || content === '!help') {
     const channelName = message.channel.name.toLowerCase();
     if (!channelName.includes('bot-komut') && !channelName.includes('botkomut')) {
@@ -436,6 +484,7 @@ client.on('messageCreate', async (message) => {
       .setColor('#5865F2')
       .setTitle('🤖 Bot Komut & Sistem Listesi')
       .addFields(
+        { name: '🧠 Yapay Zeka', value: 'Beni etiketleyip istediğin soruyu sorabilirsin! (Örn: `@Bot nasılsın?`)' },
         { name: '⭐ Seviye Sistemi (#level-bilgi)', value: '`!seviye` - Seviye kartınızı gösterir.\n`!liderlik` - Sunucu sıralamasını gösterir.' },
         { name: '🛡️ Otomatik Güvenlik', value: '• **Küfür Engeli:** Otomatik silinir.\n• **Link Engeli:** Kademeli uyarı/timeout/ban.' },
         { name: '🎮 Eğlence / Bilgi', value: '`!zar`, `!yazıtura`, `!ping`, `!avatar`, `!sunucu`' }
