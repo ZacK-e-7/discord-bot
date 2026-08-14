@@ -14,6 +14,14 @@ const {
   ButtonStyle
 } = require('discord.js');
 
+// ================= ÇÖKME ÖNLEYİCİ (CRASH SHIELD) ================= //
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Yakalanmayan Reddetme (Unhandled Rejection):', reason);
+});
+process.on('uncaughtException', (err, origin) => {
+  console.error('Yakalanmayan İstisna (Uncaught Exception):', err);
+});
+
 // ================= EXPRESS WEB SUNUCUSU (7/24 KEEPALIVE) ================= //
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -215,359 +223,401 @@ client.once('ready', async () => {
 
   // 15 Dakikada Bir Otomatik Haber Kontrolü
   setInterval(async () => {
-    const latestNews = await fetchLatestValoNews();
-    if (latestNews && latestNews.url && latestNews.url !== lastValoNewsUrl) {
-      lastValoNewsUrl = latestNews.url;
+    try {
+      const latestNews = await fetchLatestValoNews();
+      if (latestNews && latestNews.url && latestNews.url !== lastValoNewsUrl) {
+        lastValoNewsUrl = latestNews.url;
 
-      client.guilds.cache.forEach(guild => {
-        const valoChannel = getValoNewsChannel(guild);
-        if (valoChannel) {
-          const newsEmbed = new EmbedBuilder()
-            .setColor('#FF4655')
-            .setTitle(`📢 Yeni Valorant Haberi: ${latestNews.title}`)
-            .setURL(latestNews.url)
-            .setDescription(`${latestNews.description}\n\n👉 [Haberi Resmi Sitede Oku](${latestNews.url})`)
-            .addFields({ name: '🏷️ Kategori', value: latestNews.category, inline: true })
-            .setFooter({ text: 'K7e • Otomatik Valorant Haber Sistemi' })
-            .setTimestamp();
+        client.guilds.cache.forEach(guild => {
+          const valoChannel = getValoNewsChannel(guild);
+          if (valoChannel) {
+            const newsEmbed = new EmbedBuilder()
+              .setColor('#FF4655')
+              .setTitle(`📢 Yeni Valorant Haberi: ${latestNews.title}`)
+              .setURL(latestNews.url)
+              .setDescription(`${latestNews.description}\n\n👉 [Haberi Resmi Sitede Oku](${latestNews.url})`)
+              .addFields({ name: '🏷️ Kategori', value: latestNews.category, inline: true })
+              .setFooter({ text: 'K7e • Otomatik Valorant Haber Sistemi' })
+              .setTimestamp();
 
-          if (latestNews.image) newsEmbed.setImage(latestNews.image);
+            if (latestNews.image) newsEmbed.setImage(latestNews.image);
 
-          valoChannel.send({ content: '🔔 **Yeni bir Valorant güncellemesi / haberi paylaşıldı!**', embeds: [newsEmbed] }).catch(() => {});
-        }
-      });
-    }
+            valoChannel.send({ content: '🔔 **Yeni bir Valorant güncellemesi / haberi paylaşıldı!**', embeds: [newsEmbed] }).catch(() => {});
+          }
+        });
+      }
+    } catch (e) {}
   }, 15 * 60 * 1000);
 });
 
-// ================= 🔍 GELİŞMİŞ MOD-LOG SİSTEMİ (HER ŞEYİ KAYDET) ================= //
+// ================= 🔍 HATASIZ GELİŞMİŞ MOD-LOG SİSTEMİ ================= //
 
-// 1. MESAJ SİLİNDİ LOGU
+// 1. MESAJ SİLİNDİ LOGU (Hafıza / Null Korumalı)
 client.on('messageDelete', async (message) => {
-  if (!message.guild || message.author?.bot) return;
-  const logChannel = getLogChannel(message.guild);
-  if (!logChannel || logChannel.id === message.channel.id) return;
+  try {
+    if (!message.guild || message.author?.bot) return;
+    const logChannel = getLogChannel(message.guild);
+    if (!logChannel || logChannel.id === message.channel?.id) return;
 
-  const embed = new EmbedBuilder()
-    .setColor('#ED4245')
-    .setTitle('🗑️ Bir Mesaj Silindi')
-    .addFields(
-      { name: '👤 Yazar', value: `${message.author} (\`${message.author.tag}\`)`, inline: true },
-      { name: '📍 Kanal', value: `${message.channel}`, inline: true },
-      { name: '📝 Silinen İçerik', value: message.content ? (message.content.length > 1000 ? message.content.substring(0, 1000) + '...' : message.content) : '*İçerik okunamadı veya medya içeriyordu.*' }
-    )
-    .setFooter({ text: 'K7e • Mod-Log Sistemi' })
-    .setTimestamp();
-
-  logChannel.send({ embeds: [embed] }).catch(() => {});
-});
-
-// 2. MESAJ DÜZENLENDİ LOGU
-client.on('messageUpdate', async (oldMessage, newMessage) => {
-  if (!oldMessage.guild || oldMessage.author?.bot) return;
-  if (oldMessage.content === newMessage.content) return; // İçerik değişmediyse (Örn: Link önizlemesi yüklendiğinde) yoksay
-  const logChannel = getLogChannel(oldMessage.guild);
-  if (!logChannel || logChannel.id === oldMessage.channel.id) return;
-
-  const embed = new EmbedBuilder()
-    .setColor('#FEE75C')
-    .setTitle('✏️ Bir Mesaj Düzenlendi')
-    .addFields(
-      { name: '👤 Yazar', value: `${oldMessage.author} (\`${oldMessage.author?.tag}\`)`, inline: true },
-      { name: '📍 Kanal', value: `${oldMessage.channel}`, inline: true },
-      { name: '📜 Eski Hali', value: oldMessage.content ? (oldMessage.content.length > 500 ? oldMessage.content.substring(0, 500) + '...' : oldMessage.content) : '*Eski içerik okunamadı.*' },
-      { name: '✨ Yeni Hali', value: newMessage.content ? (newMessage.content.length > 500 ? newMessage.content.substring(0, 500) + '...' : newMessage.content) : '*Yeni içerik okunamadı.*' }
-    )
-    .setFooter({ text: 'K7e • Mod-Log Sistemi' })
-    .setTimestamp();
-
-  logChannel.send({ embeds: [embed] }).catch(() => {});
-});
-
-// 3. KULLANICI GÜNCELLEMELERİ (Rol, Nickname, Timeout)
-client.on('guildMemberUpdate', async (oldMember, newMember) => {
-  const logChannel = getLogChannel(newMember.guild);
-  if (!logChannel) return;
-
-  // A. Timeout (Susturma)
-  if (!oldMember.isCommunicationDisabled() && newMember.isCommunicationDisabled()) {
-    const timeoutUntil = newMember.communicationDisabledUntilTimestamp;
-    const minutes = Math.ceil((timeoutUntil - Date.now()) / (1000 * 60));
-    let executor = 'Bilinmiyor / Yetkili';
-    try {
-      const fetchedLogs = await newMember.guild.fetchAuditLogs({ limit: 1, type: AuditLogEvent.MemberUpdate });
-      const timeoutLog = fetchedLogs.entries.first();
-      if (timeoutLog && timeoutLog.target.id === newMember.id && timeoutLog.executor) {
-        executor = `${timeoutLog.executor.tag}`;
-      }
-    } catch (err) {}
+    const authorText = message.author 
+      ? `${message.author} (\`${message.author.tag}\`)` 
+      : '*Bilinmeyen Kullanıcı (Eski Mesaj)*';
 
     const embed = new EmbedBuilder()
-      .setColor('#E67E22')
-      .setTitle('⏰ Kullanıcıya Timeout Atıldı')
+      .setColor('#ED4245')
+      .setTitle('🗑️ Bir Mesaj Silindi')
       .addFields(
-        { name: 'Susturulan', value: `${newMember.user} (\`${newMember.user.tag}\`)`, inline: true },
-        { name: 'İşlemi Yapan', value: executor, inline: true },
-        { name: 'Süre', value: `~${minutes} dakika` }
-      )
-      .setFooter({ text: 'K7e • Mod-Log Sistemi' })
-      .setTimestamp();
-
-    return logChannel.send({ embeds: [embed] }).catch(() => {});
-  }
-
-  // B. Takma Ad (Nickname) Değişimi
-  if (oldMember.nickname !== newMember.nickname) {
-    const embed = new EmbedBuilder()
-      .setColor('#5865F2')
-      .setTitle('🏷️ Kullanıcı Takma Adı Değiştirildi')
-      .addFields(
-        { name: '👤 Kullanıcı', value: `${newMember.user} (\`${newMember.user.tag}\`)`, inline: false },
-        { name: 'Eski İsim', value: oldMember.nickname || oldMember.user.username, inline: true },
-        { name: 'Yeni İsim', value: newMember.nickname || newMember.user.username, inline: true }
-      )
-      .setFooter({ text: 'K7e • Mod-Log Sistemi' })
-      .setTimestamp();
-
-    return logChannel.send({ embeds: [embed] }).catch(() => {});
-  }
-
-  // C. Rol Ekleme / Çıkarma
-  if (oldMember.roles.cache.size !== newMember.roles.cache.size) {
-    const addedRoles = newMember.roles.cache.filter(role => !oldMember.roles.cache.has(role.id));
-    const removedRoles = oldMember.roles.cache.filter(role => !newMember.roles.cache.has(role.id));
-
-    if (addedRoles.size > 0) {
-      const embed = new EmbedBuilder()
-        .setColor('#57F287')
-        .setTitle('➕ Kullanıcıya Rol Eklendi')
-        .addFields(
-          { name: '👤 Kullanıcı', value: `${newMember.user} (\`${newMember.user.tag}\`)`, inline: true },
-          { name: 'Verilen Rol(ler)', value: addedRoles.map(r => `${r}`).join(', '), inline: true }
-        )
-        .setFooter({ text: 'K7e • Mod-Log Sistemi' })
-        .setTimestamp();
-
-      logChannel.send({ embeds: [embed] }).catch(() => {});
-    }
-
-    if (removedRoles.size > 0) {
-      const embed = new EmbedBuilder()
-        .setColor('#ED4245')
-        .setTitle('➖ Kullanıcıdan Rol Alındı')
-        .addFields(
-          { name: '👤 Kullanıcı', value: `${newMember.user} (\`${newMember.user.tag}\`)`, inline: true },
-          { name: 'Alınan Rol(ler)', value: removedRoles.map(r => `${r.name}`).join(', '), inline: true }
-        )
-        .setFooter({ text: 'K7e • Mod-Log Sistemi' })
-        .setTimestamp();
-
-      logChannel.send({ embeds: [embed] }).catch(() => {});
-    }
-  }
-});
-
-// 4. KANAL OLUŞTURULDU LOGU
-client.on('channelCreate', async (channel) => {
-  if (!channel.guild) return;
-  const logChannel = getLogChannel(channel.guild);
-  if (!logChannel) return;
-
-  const embed = new EmbedBuilder()
-    .setColor('#57F287')
-    .setTitle('📁 Yeni Kanal Oluşturuldu')
-    .addFields(
-      { name: 'Kanal Adı', value: `\`#${channel.name}\``, inline: true },
-      { name: 'Kanal Türü', value: channel.type === 2 ? 'Ses Kanalı 🔊' : 'Metin Kanalı 💬', inline: true }
-    )
-    .setFooter({ text: 'K7e • Mod-Log Sistemi' })
-    .setTimestamp();
-
-  logChannel.send({ embeds: [embed] }).catch(() => {});
-});
-
-// 5. KANAL SİLİNDİ LOGU
-client.on('channelDelete', async (channel) => {
-  if (!channel.guild) return;
-  const logChannel = getLogChannel(channel.guild);
-  if (!logChannel) return;
-
-  const embed = new EmbedBuilder()
-    .setColor('#ED4245')
-    .setTitle('🗑️ Bir Kanal Silindi')
-    .addFields({ name: 'Silinen Kanal', value: `\`#${channel.name}\``, inline: true })
-    .setFooter({ text: 'K7e • Mod-Log Sistemi' })
-    .setTimestamp();
-
-  logChannel.send({ embeds: [embed] }).catch(() => {});
-});
-
-// 6. ROL OLUŞTURULDU / SİLİNDİ LOGU
-client.on('roleCreate', async (role) => {
-  const logChannel = getLogChannel(role.guild);
-  if (!logChannel) return;
-
-  const embed = new EmbedBuilder()
-    .setColor('#57F287')
-    .setTitle('🎭 Yeni Rol Oluşturuldu')
-    .addFields({ name: 'Rol Adı', value: `${role} (\`${role.name}\`)`, inline: true })
-    .setFooter({ text: 'K7e • Mod-Log Sistemi' })
-    .setTimestamp();
-
-  logChannel.send({ embeds: [embed] }).catch(() => {});
-});
-
-client.on('roleDelete', async (role) => {
-  const logChannel = getLogChannel(role.guild);
-  if (!logChannel) return;
-
-  const embed = new EmbedBuilder()
-    .setColor('#ED4245')
-    .setTitle('🗑️ Bir Rol Silindi')
-    .addFields({ name: 'Silinen Rol', value: `\`${role.name}\``, inline: true })
-    .setFooter({ text: 'K7e • Mod-Log Sistemi' })
-    .setTimestamp();
-
-  logChannel.send({ embeds: [embed] }).catch(() => {});
-});
-
-// 7. SUNUCU AYARLARI GÜNCELLENDİ (İsim, İkon)
-client.on('guildUpdate', async (oldGuild, newGuild) => {
-  const logChannel = getLogChannel(newGuild);
-  if (!logChannel) return;
-
-  if (oldGuild.name !== newGuild.name) {
-    const embed = new EmbedBuilder()
-      .setColor('#5865F2')
-      .setTitle('🏰 Sunucu Adı Değiştirildi')
-      .addFields(
-        { name: 'Eski İsim', value: `\`${oldGuild.name}\``, inline: true },
-        { name: 'Yeni İsim', value: `\`${newGuild.name}\``, inline: true }
+        { name: '👤 Yazar', value: authorText, inline: true },
+        { name: '📍 Kanal', value: message.channel ? `${message.channel}` : 'Bilinmeyen Kanal', inline: true },
+        { name: '📝 Silinen İçerik', value: message.content ? (message.content.length > 1000 ? message.content.substring(0, 1000) + '...' : message.content) : '*İçerik okunamadı veya medya/fotoğraf içeriyordu.*' }
       )
       .setFooter({ text: 'K7e • Mod-Log Sistemi' })
       .setTimestamp();
 
     logChannel.send({ embeds: [embed] }).catch(() => {});
+  } catch (err) {
+    console.error('messageDelete Log Hatası:', err);
   }
 });
 
-// 8. SES KANALI HAREKETLERİ (Giriş, Çıkış, Oda Değiştirme)
-client.on('voiceStateUpdate', async (oldState, newState) => {
-  const logChannel = getLogChannel(newState.guild || oldState.guild);
-  if (!logChannel) return;
+// 2. MESAJ DÜZENLENDİ LOGU (Null Korumalı)
+client.on('messageUpdate', async (oldMessage, newMessage) => {
+  try {
+    if (!oldMessage.guild || oldMessage.author?.bot) return;
+    if (oldMessage.content === newMessage.content) return;
+    const logChannel = getLogChannel(oldMessage.guild);
+    if (!logChannel || logChannel.id === oldMessage.channel?.id) return;
 
-  const member = newState.member || oldState.member;
-  if (!member || member.user.bot) return;
+    const authorText = newMessage.author 
+      ? `${newMessage.author} (\`${newMessage.author.tag}\`)` 
+      : (oldMessage.author ? `${oldMessage.author} (\`${oldMessage.author.tag}\`)` : '*Bilinmeyen Kullanıcı*');
 
-  // A. Ses Kanalına Giriş
-  if (!oldState.channelId && newState.channelId) {
+    const embed = new EmbedBuilder()
+      .setColor('#FEE75C')
+      .setTitle('✏️ Bir Mesaj Düzenlendi')
+      .addFields(
+        { name: '👤 Yazar', value: authorText, inline: true },
+        { name: '📍 Kanal', value: `${oldMessage.channel}`, inline: true },
+        { name: '📜 Eski Hali', value: oldMessage.content ? (oldMessage.content.length > 500 ? oldMessage.content.substring(0, 500) + '...' : oldMessage.content) : '*Eski içerik okunamadı.*' },
+        { name: '✨ Yeni Hali', value: newMessage.content ? (newMessage.content.length > 500 ? newMessage.content.substring(0, 500) + '...' : newMessage.content) : '*Yeni içerik okunamadı.*' }
+      )
+      .setFooter({ text: 'K7e • Mod-Log Sistemi' })
+      .setTimestamp();
+
+    logChannel.send({ embeds: [embed] }).catch(() => {});
+  } catch (err) {
+    console.error('messageUpdate Log Hatası:', err);
+  }
+});
+
+// 3. KULLANICI GÜNCELLEMELERİ (Rol, Nickname, Timeout)
+client.on('guildMemberUpdate', async (oldMember, newMember) => {
+  try {
+    const logChannel = getLogChannel(newMember.guild);
+    if (!logChannel) return;
+
+    // A. Timeout
+    if (!oldMember.isCommunicationDisabled() && newMember.isCommunicationDisabled()) {
+      const timeoutUntil = newMember.communicationDisabledUntilTimestamp;
+      const minutes = Math.ceil((timeoutUntil - Date.now()) / (1000 * 60));
+      let executor = 'Yetkili';
+      try {
+        const fetchedLogs = await newMember.guild.fetchAuditLogs({ limit: 1, type: AuditLogEvent.MemberUpdate });
+        const timeoutLog = fetchedLogs.entries.first();
+        if (timeoutLog && timeoutLog.target.id === newMember.id && timeoutLog.executor) {
+          executor = `${timeoutLog.executor.tag}`;
+        }
+      } catch (err) {}
+
+      const embed = new EmbedBuilder()
+        .setColor('#E67E22')
+        .setTitle('⏰ Kullanıcıya Timeout Atıldı')
+        .addFields(
+          { name: 'Susturulan', value: `${newMember.user} (\`${newMember.user.tag}\`)`, inline: true },
+          { name: 'İşlemi Yapan', value: executor, inline: true },
+          { name: 'Süre', value: `~${minutes} dakika` }
+        )
+        .setFooter({ text: 'K7e • Mod-Log Sistemi' })
+        .setTimestamp();
+
+      return logChannel.send({ embeds: [embed] }).catch(() => {});
+    }
+
+    // B. Takma Ad (Nickname)
+    if (oldMember.nickname !== newMember.nickname) {
+      const embed = new EmbedBuilder()
+        .setColor('#5865F2')
+        .setTitle('🏷️ Kullanıcı Takma Adı Değiştirildi')
+        .addFields(
+          { name: '👤 Kullanıcı', value: `${newMember.user} (\`${newMember.user.tag}\`)`, inline: false },
+          { name: 'Eski İsim', value: oldMember.nickname || oldMember.user.username, inline: true },
+          { name: 'Yeni İsim', value: newMember.nickname || newMember.user.username, inline: true }
+        )
+        .setFooter({ text: 'K7e • Mod-Log Sistemi' })
+        .setTimestamp();
+
+      return logChannel.send({ embeds: [embed] }).catch(() => {});
+    }
+
+    // C. Rol Değişikliği
+    if (oldMember.roles.cache.size !== newMember.roles.cache.size) {
+      const addedRoles = newMember.roles.cache.filter(role => !oldMember.roles.cache.has(role.id));
+      const removedRoles = oldMember.roles.cache.filter(role => !newMember.roles.cache.has(role.id));
+
+      if (addedRoles.size > 0) {
+        const embed = new EmbedBuilder()
+          .setColor('#57F287')
+          .setTitle('➕ Kullanıcıya Rol Eklendi')
+          .addFields(
+            { name: '👤 Kullanıcı', value: `${newMember.user} (\`${newMember.user.tag}\`)`, inline: true },
+            { name: 'Verilen Rol(ler)', value: addedRoles.map(r => `${r}`).join(', '), inline: true }
+          )
+          .setFooter({ text: 'K7e • Mod-Log Sistemi' })
+          .setTimestamp();
+
+        logChannel.send({ embeds: [embed] }).catch(() => {});
+      }
+
+      if (removedRoles.size > 0) {
+        const embed = new EmbedBuilder()
+          .setColor('#ED4245')
+          .setTitle('➖ Kullanıcıdan Rol Alındı')
+          .addFields(
+            { name: '👤 Kullanıcı', value: `${newMember.user} (\`${newMember.user.tag}\`)`, inline: true },
+            { name: 'Alınan Rol(ler)', value: removedRoles.map(r => `${r.name}`).join(', '), inline: true }
+          )
+          .setFooter({ text: 'K7e • Mod-Log Sistemi' })
+          .setTimestamp();
+
+        logChannel.send({ embeds: [embed] }).catch(() => {});
+      }
+    }
+  } catch (err) {
+    console.error('guildMemberUpdate Log Hatası:', err);
+  }
+});
+
+// 4. KANAL OLUŞTURULDU LOGU
+client.on('channelCreate', async (channel) => {
+  try {
+    if (!channel.guild) return;
+    const logChannel = getLogChannel(channel.guild);
+    if (!logChannel) return;
+
     const embed = new EmbedBuilder()
       .setColor('#57F287')
-      .setTitle('🔊 Ses Kanalına Katıldı')
-      .setDescription(`${member} (\`${member.user.tag}\`) kullanıcısı **${newState.channel.name}** odasına bağlandı.`)
+      .setTitle('📁 Yeni Kanal Oluşturuldu')
+      .addFields(
+        { name: 'Kanal Adı', value: `\`#${channel.name}\``, inline: true },
+        { name: 'Kanal Türü', value: channel.type === 2 ? 'Ses Kanalı 🔊' : 'Metin Kanalı 💬', inline: true }
+      )
       .setFooter({ text: 'K7e • Mod-Log Sistemi' })
       .setTimestamp();
-    return logChannel.send({ embeds: [embed] }).catch(() => {});
-  }
 
-  // B. Ses Kanalından Çıkış
-  if (oldState.channelId && !newState.channelId) {
-    const embed = new EmbedBuilder()
-      .setColor('#ED4245')
-      .setTitle('🔇 Ses Kanalından Ayrıldı')
-      .setDescription(`${member} (\`${member.user.tag}\`) kullanıcısı **${oldState.channel.name}** odasından ayrıldı.`)
-      .setFooter({ text: 'K7e • Mod-Log Sistemi' })
-      .setTimestamp();
-    return logChannel.send({ embeds: [embed] }).catch(() => {});
-  }
-
-  // C. Ses Kanalı Değiştirme
-  if (oldState.channelId && newState.channelId && oldState.channelId !== newState.channelId) {
-    const embed = new EmbedBuilder()
-      .setColor('#5865F2')
-      .setTitle('🔀 Ses Kanalı Değiştirdi')
-      .setDescription(`${member} kullanıcısı **${oldState.channel.name}** odasından ➔ **${newState.channel.name}** odasına geçti.`)
-      .setFooter({ text: 'K7e • Mod-Log Sistemi' })
-      .setTimestamp();
-    return logChannel.send({ embeds: [embed] }).catch(() => {});
-  }
+    logChannel.send({ embeds: [embed] }).catch(() => {});
+  } catch (e) {}
 });
 
-// 9. BAN VE BAN KALDIRMA LOGLARI
-client.on('guildBanAdd', async (ban) => {
-  const logChannel = getLogChannel(ban.guild);
-  if (!logChannel) return;
-  let executor = 'Bilinmiyor / Yetkili';
-  let reason = 'Sebep Belirtilmedi';
-
+// 5. KANAL SİLİNDİ LOGU
+client.on('channelDelete', async (channel) => {
   try {
-    const fetchedLogs = await ban.guild.fetchAuditLogs({ limit: 1, type: AuditLogEvent.MemberBanAdd });
-    const banLog = fetchedLogs.entries.first();
-    if (banLog && banLog.target.id === ban.user.id) {
-      if (banLog.executor) executor = `${banLog.executor.tag}`;
-      if (banLog.reason) reason = banLog.reason;
+    if (!channel.guild) return;
+    const logChannel = getLogChannel(channel.guild);
+    if (!logChannel) return;
+
+    const embed = new EmbedBuilder()
+      .setColor('#ED4245')
+      .setTitle('🗑️ Bir Kanal Silindi')
+      .addFields({ name: 'Silinen Kanal', value: `\`#${channel.name}\``, inline: true })
+      .setFooter({ text: 'K7e • Mod-Log Sistemi' })
+      .setTimestamp();
+
+    logChannel.send({ embeds: [embed] }).catch(() => {});
+  } catch (e) {}
+});
+
+// 6. ROL OLUŞTURULDU / SİLİNDİ LOGU
+client.on('roleCreate', async (role) => {
+  try {
+    const logChannel = getLogChannel(role.guild);
+    if (!logChannel) return;
+
+    const embed = new EmbedBuilder()
+      .setColor('#57F287')
+      .setTitle('🎭 Yeni Rol Oluşturuldu')
+      .addFields({ name: 'Rol Adı', value: `${role} (\`${role.name}\`)`, inline: true })
+      .setFooter({ text: 'K7e • Mod-Log Sistemi' })
+      .setTimestamp();
+
+    logChannel.send({ embeds: [embed] }).catch(() => {});
+  } catch (e) {}
+});
+
+client.on('roleDelete', async (role) => {
+  try {
+    const logChannel = getLogChannel(role.guild);
+    if (!logChannel) return;
+
+    const embed = new EmbedBuilder()
+      .setColor('#ED4245')
+      .setTitle('🗑️ Bir Rol Silindi')
+      .addFields({ name: 'Silinen Rol', value: `\`${role.name}\``, inline: true })
+      .setFooter({ text: 'K7e • Mod-Log Sistemi' })
+      .setTimestamp();
+
+    logChannel.send({ embeds: [embed] }).catch(() => {});
+  } catch (e) {}
+});
+
+// 7. SUNUCU İSMİ DEĞİŞTİRİLDİ
+client.on('guildUpdate', async (oldGuild, newGuild) => {
+  try {
+    const logChannel = getLogChannel(newGuild);
+    if (!logChannel) return;
+
+    if (oldGuild.name !== newGuild.name) {
+      const embed = new EmbedBuilder()
+        .setColor('#5865F2')
+        .setTitle('🏰 Sunucu Adı Değiştirildi')
+        .addFields(
+          { name: 'Eski İsim', value: `\`${oldGuild.name}\``, inline: true },
+          { name: 'Yeni İsim', value: `\`${newGuild.name}\``, inline: true }
+        )
+        .setFooter({ text: 'K7e • Mod-Log Sistemi' })
+        .setTimestamp();
+
+      logChannel.send({ embeds: [embed] }).catch(() => {});
     }
-  } catch (err) {}
+  } catch (e) {}
+});
 
-  const embed = new EmbedBuilder()
-    .setColor('#992D22')
-    .setTitle('🔨 Kullanıcı Yasaklandı (Ban)')
-    .addFields(
-      { name: 'Yasaklanan', value: `${ban.user} (\`${ban.user.tag}\`)`, inline: true },
-      { name: 'Yetkili', value: executor, inline: true },
-      { name: 'Sebep', value: reason }
-    )
-    .setFooter({ text: 'K7e • Mod-Log Sistemi' })
-    .setTimestamp();
+// 8. SES KANALI HAREKETLERİ
+client.on('voiceStateUpdate', async (oldState, newState) => {
+  try {
+    const logChannel = getLogChannel(newState.guild || oldState.guild);
+    if (!logChannel) return;
 
-  logChannel.send({ embeds: [embed] }).catch(() => {});
+    const member = newState.member || oldState.member;
+    if (!member || member.user?.bot) return;
+
+    // Giriş
+    if (!oldState.channelId && newState.channelId) {
+      const embed = new EmbedBuilder()
+        .setColor('#57F287')
+        .setTitle('🔊 Ses Kanalına Katıldı')
+        .setDescription(`${member} (\`${member.user.tag}\`) kullanıcısı **${newState.channel?.name}** odasına bağlandı.`)
+        .setFooter({ text: 'K7e • Mod-Log Sistemi' })
+        .setTimestamp();
+      return logChannel.send({ embeds: [embed] }).catch(() => {});
+    }
+
+    // Çıkış
+    if (oldState.channelId && !newState.channelId) {
+      const embed = new EmbedBuilder()
+        .setColor('#ED4245')
+        .setTitle('🔇 Ses Kanalından Ayrıldı')
+        .setDescription(`${member} (\`${member.user.tag}\`) kullanıcısı **${oldState.channel?.name}** odasından ayrıldı.`)
+        .setFooter({ text: 'K7e • Mod-Log Sistemi' })
+        .setTimestamp();
+      return logChannel.send({ embeds: [embed] }).catch(() => {});
+    }
+
+    // Değiştirme
+    if (oldState.channelId && newState.channelId && oldState.channelId !== newState.channelId) {
+      const embed = new EmbedBuilder()
+        .setColor('#5865F2')
+        .setTitle('🔀 Ses Kanalı Değiştirdi')
+        .setDescription(`${member} kullanıcısı **${oldState.channel?.name}** ➔ **${newState.channel?.name}** odasına geçti.`)
+        .setFooter({ text: 'K7e • Mod-Log Sistemi' })
+        .setTimestamp();
+      return logChannel.send({ embeds: [embed] }).catch(() => {});
+    }
+  } catch (e) {}
+});
+
+// 9. BAN VE UNBAN LOGLARI
+client.on('guildBanAdd', async (ban) => {
+  try {
+    const logChannel = getLogChannel(ban.guild);
+    if (!logChannel) return;
+    let executor = 'Yetkili';
+    let reason = 'Sebep Belirtilmedi';
+
+    try {
+      const fetchedLogs = await ban.guild.fetchAuditLogs({ limit: 1, type: AuditLogEvent.MemberBanAdd });
+      const banLog = fetchedLogs.entries.first();
+      if (banLog && banLog.target.id === ban.user.id && banLog.executor) {
+        executor = `${banLog.executor.tag}`;
+        if (banLog.reason) reason = banLog.reason;
+      }
+    } catch (err) {}
+
+    const embed = new EmbedBuilder()
+      .setColor('#992D22')
+      .setTitle('🔨 Kullanıcı Yasaklandı (Ban)')
+      .addFields(
+        { name: 'Yasaklanan', value: `${ban.user} (\`${ban.user.tag}\`)`, inline: true },
+        { name: 'Yetkili', value: executor, inline: true },
+        { name: 'Sebep', value: reason }
+      )
+      .setFooter({ text: 'K7e • Mod-Log Sistemi' })
+      .setTimestamp();
+
+    logChannel.send({ embeds: [embed] }).catch(() => {});
+  } catch (e) {}
 });
 
 client.on('guildBanRemove', async (ban) => {
-  const logChannel = getLogChannel(ban.guild);
-  if (!logChannel) return;
+  try {
+    const logChannel = getLogChannel(ban.guild);
+    if (!logChannel) return;
 
-  const embed = new EmbedBuilder()
-    .setColor('#57F287')
-    .setTitle('🔓 Yasak Kaldırıldı (Unban)')
-    .addFields({ name: 'Kullanıcı', value: `${ban.user} (\`${ban.user.tag}\`)`, inline: true })
-    .setFooter({ text: 'K7e • Mod-Log Sistemi' })
-    .setTimestamp();
+    const embed = new EmbedBuilder()
+      .setColor('#57F287')
+      .setTitle('🔓 Yasak Kaldırıldı (Unban)')
+      .addFields({ name: 'Kullanıcı', value: `${ban.user} (\`${ban.user.tag}\`)`, inline: true })
+      .setFooter({ text: 'K7e • Mod-Log Sistemi' })
+      .setTimestamp();
 
-  logChannel.send({ embeds: [embed] }).catch(() => {});
+    logChannel.send({ embeds: [embed] }).catch(() => {});
+  } catch (e) {}
 });
 
 // ================= HOŞ GELDİN & OTOMATİK ROL ================= //
 
 client.on('guildMemberAdd', async (member) => {
-  const autoRole = member.guild.roles.cache.find(role => 
-    ['kayıtlı üye', 'kayitli uye', 'üye', 'uye'].some(k => role.name.toLowerCase().includes(k))
-  );
-  if (autoRole) await member.roles.add(autoRole).catch(() => {});
+  try {
+    const autoRole = member.guild.roles.cache.find(role => 
+      ['kayıtlı üye', 'kayitli uye', 'üye', 'uye'].some(k => role.name.toLowerCase().includes(k))
+    );
+    if (autoRole) await member.roles.add(autoRole).catch(() => {});
 
-  const welcomeChannel = getWelcomeChannel(member.guild);
-  if (welcomeChannel) {
-    const welcomeEmbed = new EmbedBuilder()
-      .setColor('#57F287')
-      .setTitle(`🎉 Sunucumuza Hoş Geldin ${member.user.username}!`)
-      .setDescription(`Aramıza katıldığın için mutluyuz ${member}! 👋\n🏰 **${member.guild.name}** sunucusunda seninle birlikte **${member.guild.memberCount}** kişi olduk!`)
-      .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
-      .setTimestamp();
-    welcomeChannel.send({ embeds: [welcomeEmbed] }).catch(() => {});
-  }
+    const welcomeChannel = getWelcomeChannel(member.guild);
+    if (welcomeChannel) {
+      const welcomeEmbed = new EmbedBuilder()
+        .setColor('#57F287')
+        .setTitle(`🎉 Sunucumuza Hoş Geldin ${member.user.username}!`)
+        .setDescription(`Aramıza katıldığın için mutluyuz ${member}! 👋\n🏰 **${member.guild.name}** sunucusunda seninle birlikte **${member.guild.memberCount}** kişi olduk!`)
+        .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
+        .setTimestamp();
+      welcomeChannel.send({ embeds: [welcomeEmbed] }).catch(() => {});
+    }
+  } catch (e) {}
 });
 
 client.on('guildMemberRemove', (member) => {
-  const welcomeChannel = getWelcomeChannel(member.guild);
-  if (welcomeChannel) {
-    const leaveEmbed = new EmbedBuilder()
-      .setColor('#ED4245')
-      .setTitle(`📤 Görüşmek Üzere ${member.user.username}...`)
-      .setDescription(`${member.user.tag} aramızdan ayrıldı. Kalan üye sayısı: **${member.guild.memberCount}**`)
-      .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
-      .setTimestamp();
-    welcomeChannel.send({ embeds: [leaveEmbed] }).catch(() => {});
-  }
+  try {
+    const welcomeChannel = getWelcomeChannel(member.guild);
+    if (welcomeChannel) {
+      const leaveEmbed = new EmbedBuilder()
+        .setColor('#ED4245')
+        .setTitle(`📤 Görüşmek Üzere ${member.user.username}...`)
+        .setDescription(`${member.user.tag} aramızdan ayrıldı. Kalan üye sayısı: **${member.guild.memberCount}**`)
+        .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
+        .setTimestamp();
+      welcomeChannel.send({ embeds: [leaveEmbed] }).catch(() => {});
+    }
+  } catch (e) {}
 });
 
 // ================= BUTON ETKİLEŞİMİ (VALORANT AJAN SEÇİCİ) ================= //
