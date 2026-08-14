@@ -7,7 +7,10 @@ const {
   GatewayIntentBits, 
   EmbedBuilder, 
   PermissionFlagsBits, 
-  AuditLogEvent 
+  AuditLogEvent,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle
 } = require('discord.js');
 
 // ================= EXPRESS WEB SUNUCUSU (7/24 KEEPALIVE) ================= //
@@ -38,10 +41,45 @@ const client = new Client({
 // Link Uyarıları Hafızası
 const linkWarnings = new Map();
 
+// ================= VALORANT AJANLARI LİSTESİ ================= //
+const valorantAgents = [
+  // Düellocular
+  { name: 'Jett', role: 'Düellocu 🗡️', color: '#87CEEB', desc: 'Çevik, rüzgar gibi hızlı ve agresif oyun tarzı için 1 numara!' },
+  { name: 'Reyna', role: 'Düellocu 🗡️', color: '#8A2BE2', desc: 'Birebir çatışmalarda rakipleri eritmek ve maçı taşımak için mükemmel.' },
+  { name: 'Raze', role: 'Düellocu 🗡️', color: '#FF4500', desc: 'Patlayıcı çantalar ve roketatarla alan kontrolünü ele geçir!' },
+  { name: 'Phoenix', role: 'Düellocu 🗡️', color: '#FF6347', desc: 'Flaşlarınla kör et, ateş duvarınla canını doldurup saldır!' },
+  { name: 'Yoru', role: 'Düellocu 🗡️', color: '#1E90FF', desc: 'Boyutlar arası geçiş yap, rakipleri sahte seslerle şaşırt!' },
+  { name: 'Neon', role: 'Düellocu 🗡️', color: '#00FFFF', desc: 'Yüksek elektrik hızı ve kayma mekaniğiyle düşmanları gafil avla!' },
+  { name: 'Iso', role: 'Düellocu 🗡️', color: '#9370DB', desc: 'Kalkanını aç ve rakiplerini 1v1 arenasına çekerek infaz et!' },
+  
+  // Öncüler
+  { name: 'Sova', role: 'Öncü 🏹', color: '#4682B4', desc: 'Görüş ve şok oklarıyla haritanın her köşesinden bilgi topla.' },
+  { name: 'Breach', role: 'Öncü 💥', color: '#CD853F', desc: 'Duvarların arkasından sarsıntı ve flaş yağdırarak alanı temizle!' },
+  { name: 'Skye', role: 'Öncü 🦅', color: '#2E8B57', desc: 'Kuşlarınla düşmanları kör et ve kurtlarınla rakipleri avla.' },
+  { name: 'KAY/O', role: 'Öncü 🤖', color: '#708090', desc: 'Bıçağınla düşman yeteneklerini tamamen kilitle ve sustur!' },
+  { name: 'Fade', role: 'Öncü 👁️', color: '#2F4F4F', desc: 'Gölgelerle düşmanların peşine düş ve kulaklarını sağır et!' },
+  { name: 'Gekko', role: 'Öncü 🦎', color: '#7FFF00', desc: 'Kankalarınla spike kur, kör et ve yeteneklerini yerden geri topla!' },
+  
+  // Kontrol Uzmanları
+  { name: 'Omen', role: 'Kontrol Uzmanı ☁️', color: '#483D8B', desc: 'Karanlık dumanlar at ve haritanın kör noktalarına ışınlan.' },
+  { name: 'Brimstone', role: 'Kontrol Uzmanı ☄️', color: '#D2691E', desc: 'Gökyüzünden dumanlar indir ve ultinle alanı yakıp kül et!' },
+  { name: 'Viper', role: 'Kontrol Uzmanı 🐍', color: '#006400', desc: 'Zehirli gaz bulutu ve perde ile siteleri tek başına tut!' },
+  { name: 'Astra', role: 'Kontrol Uzmanı 🌌', color: '#4B0082', desc: 'Kozmik formda yıldızlar yerleştirip haritayı uzaktan yönet.' },
+  { name: 'Harbor', role: 'Kontrol Uzmanı 🌊', color: '#008080', desc: 'Su kalkanları ve dev dalgalarla takımına güvenli geçiş sağla.' },
+  { name: 'Clove', role: 'Kontrol Uzmanı 🦋', color: '#DA70D6', desc: 'Öldükten sonra bile duman atabilen cesur ve korkusuz kelebek!' },
+
+  // Gözcüler
+  { name: 'Killjoy', role: 'Gözcü 🤖', color: '#FFD700', desc: 'Taretlerin ve alarm botlarınla bombalama alanını kaleye dönüştür!' },
+  { name: 'Cypher', role: 'Gözcü 🕵️', color: '#A9A9A9', desc: 'Gizli kameralar ve tuzak telleriyle rakipten hiçbir şey kaçmaz.' },
+  { name: 'Sage', role: 'Gözcü 🧊', color: '#00FA9A', desc: 'Buz duvarıyla yolu kapat, takım arkadaşlarını iyileştir ve dirilt!' },
+  { name: 'Chamber', role: 'Gözcü 🎩', color: '#DAA520', desc: 'Ağır tabancan ve özel sniper tüfeğinle klas vuruşlar yap.' },
+  { name: 'Deadlock', role: 'Gözcü 🕸️', color: '#B0C4DE', desc: 'Ses sensörleri ve nanotel bariyerleriyle düşman koşularını durdur!' },
+  { name: 'Vyse', role: 'Gözcü 🌹', color: '#800020', desc: 'Sıvı metal gülleri ve duvar tuzaklarıyla rakipleri silahsız bırak!' }
+];
+
 // ================= KALICI VE SONSUZ SEVİYE SİSTEMİ ================= //
 const DATA_FILE = path.join(__dirname, 'levels.json');
 
-// Kayıtlı verileri dosyadan yükleme fonksiyonu
 function loadLevels() {
   try {
     if (fs.existsSync(DATA_FILE)) {
@@ -55,7 +93,6 @@ function loadLevels() {
   return new Map();
 }
 
-// Verileri dosyaya kalıcı olarak kaydetme fonksiyonu
 function saveLevels() {
   try {
     const obj = Object.fromEntries(userLevelMap);
@@ -65,15 +102,12 @@ function saveLevels() {
   }
 }
 
-// Bot başlarken kayıtlı verileri hafızaya al
 const userLevelMap = loadLevels();
 
-// 📈 Dinamik Seviye Eğrisi (İlk leveller kolay, yükseldikçe katlanarak zorlaşır)
 function getNeededXP(level) {
   return Math.floor(30 * Math.pow(level, 2) + 20 * level);
 }
 
-// Görsel İlerleme Çubuğu (Progress Bar)
 function createProgressBar(currentXP, neededXP) {
   const percentage = Math.min(1, Math.max(0, currentXP / neededXP));
   const totalBars = 10;
@@ -103,7 +137,6 @@ function getWelcomeChannel(guild) {
   );
 }
 
-// Level Bilgi Kanalını Bulucu
 function getLevelChannel(guild) {
   if (!guild) return null;
   return guild.channels.cache.find(c => 
@@ -125,13 +158,12 @@ function isAuthorized(member) {
   );
 }
 
-// ================= BOT HAZIR OLDUĞUNDA VE DURUM (ACTIVITY) AYARI ================= //
+// ================= BOT DURUMU (WATCHING) ================= //
 
 client.once('ready', () => {
   console.log(`🤖 Bot aktif! ${client.user.tag} olarak giriş yapıldı.`);
   console.log(`💾 Toplam ${userLevelMap.size} kullanıcının seviye verisi yüklendi.`);
 
-  // 👁️ "İzliyor" Durumları (6 saniyede bir sırayla değişir)
   const durumlar = [
     '!yardım',
     'Beni etiketle soru sor!',
@@ -139,12 +171,36 @@ client.once('ready', () => {
   ];
 
   let index = 0;
-  client.user.setActivity(durumlar[0], { type: 3 }); // 3 = Watching (İzliyor)
+  client.user.setActivity(durumlar[0], { type: 3 });
 
   setInterval(() => {
     index = (index + 1) % durumlar.length;
     client.user.setActivity(durumlar[index], { type: 3 });
   }, 6000);
+});
+
+// ================= BUTON ETKİLEŞİMİ (VALORANT AJAN SEÇİCİ) ================= //
+
+client.on('interactionCreate', async (interaction) => {
+  if (!interaction.isButton()) return;
+
+  if (interaction.customId === 'btn_random_agent') {
+    const randomAgent = valorantAgents[Math.floor(Math.random() * valorantAgents.length)];
+
+    const agentEmbed = new EmbedBuilder()
+      .setColor(randomAgent.color)
+      .setTitle(`🎯 Bu Maçtaki Ajanın: **${randomAgent.name}**`)
+      .setAuthor({ name: 'VALORANT • Rastgele Ajan Seçici', iconURL: 'https://cdn-icons-png.flaticon.com/512/588/588258.png' })
+      .addFields(
+        { name: '🎭 Rol', value: `**${randomAgent.role}**`, inline: true },
+        { name: '💡 Taktik / Özellik', value: randomAgent.desc, inline: false }
+      )
+      .setFooter({ text: 'K7e • Bol şans ve iyi vuruşlar!' })
+      .setTimestamp();
+
+    // Sadece butona basan kişiye özel gizli mesaj
+    await interaction.reply({ embeds: [agentEmbed], ephemeral: true });
+  }
 });
 
 // ================= BAN & TIMEOUT LOGLARI ================= //
@@ -342,13 +398,12 @@ client.on('messageCreate', async (message) => {
     const now = Date.now();
 
     if (now - userData.lastXpTime >= 5000) {
-      const earnedXP = Math.floor(Math.random() * 16) + 25; // 25-40 XP
+      const earnedXP = Math.floor(Math.random() * 16) + 25;
       userData.xp += earnedXP;
       userData.lastXpTime = now;
 
       const neededXP = getNeededXP(userData.level);
 
-      // Seviye Atlama Kontrolü (Sonsuz Seviye)
       if (userData.xp >= neededXP) {
         userData.level += 1;
 
@@ -370,6 +425,36 @@ client.on('messageCreate', async (message) => {
 
   // ================= KOMUTLAR ================= //
 
+  // 🎮 VALORANT RASTGELE AJAN PANELİ (!ajanpanel / !ajan-panel)
+  if (content === '!ajanpanel' || content === '!ajan-panel') {
+    if (!isAuthorized(message.member)) {
+      return message.reply('❌ Bu komutu sadece **Yönetici** veya **Moderatör** rolündekiler kullanabilir.');
+    }
+
+    await message.delete().catch(() => {});
+
+    const panelEmbed = new EmbedBuilder()
+      .setColor('#FF4655') // Valorant Kırmızısı
+      .setTitle('🎯 VALORANT RASTGELE AJAN SEÇİCİ')
+      .setDescription(
+        'Hangi ajanı oynayacağına karar veremedin mi? 🤔\n\n' +
+        'Aşağıdaki butona basarak sistemin senin için tamamen **rastgele bir ajan** seçmesini sağlayabilirsin!\n\n' +
+        '🎲 *Seçilen ajan ve rol bilgisi sadece sana özel görünecektir.*'
+      )
+      .setImage('https://images.contentstack.io/v3/assets/bltb6530b271fddd0b1/blt804071d8be8d5d4d/66184918e953a7a9228d447d/Valorant_2024_EP8-2_Textless_3840x2160.jpg')
+      .setFooter({ text: 'K7e • Valorant Ajan Sistemi' })
+      .setTimestamp();
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId('btn_random_agent')
+        .setLabel('🎲 Rastgele Ajan Seç')
+        .setStyle(ButtonStyle.Danger)
+    );
+
+    return message.channel.send({ embeds: [panelEmbed], components: [row] });
+  }
+
   // 👑 ADMIN KONTROL PANELİ
   if (content === '!admin' || content === '!yönetim' || content === '!yonetim') {
     if (!isAuthorized(message.member)) {
@@ -383,8 +468,9 @@ client.on('messageCreate', async (message) => {
       .setDescription('Sunucumuzda yetkililere özel moderasyon komutları ve aktif güvenlik modülleri aşağıdadır:')
       .addFields(
         {
-          name: '🛠️ Moderasyon Komutları',
+          name: '🛠️ Moderasyon & Kurulum Komutları',
           value: 
+            '• `!ajanpanel` : Valorant butonlu rastgele ajan panelini kurar.\n' +
             '• `!xpekle [@üye] [miktar]` : Kullanıcıya XP ekler.\n' +
             '• `!sustur [@üye] [dakika] [sebep]` : Kullanıcıya timeout atar.\n' +
             '• `!sil [1-100]` : Belirtilen sayıda mesajı topluca siler.\n' +
@@ -396,7 +482,8 @@ client.on('messageCreate', async (message) => {
           name: '⚙️ Aktif Koruma Modülleri',
           value: 
             '• 🟢 **Yapay Zeka:** Açık (Botu etiketleyerek soru sorulabilir).\n' +
-            '• 🟢 **Limitsiz Seviye Sistemi:** Açık (Seviye sınırı yok, veriler anında kaydedilir).\n' +
+            '• 🟢 **Valorant Ajan Seçici:** Açık (`!ajanpanel`).\n' +
+            '• 🟢 **Limitsiz Seviye Sistemi:** Açık (Seviye sınırı yok, veriler diske kaydedilir).\n' +
             '• 🟢 **Küfür Filtresi:** Açık (Yetkililer hariç mesajları siler).\n' +
             '• 🟢 **Reklam / Link Engeli:** Açık (5 aşamalı ceza sistemi).\n' +
             '• 🟢 **Otomatik Rol:** Açık (Yeni üyelere `Kayıtlı Üye` rolü tanımlanır).\n' +
@@ -494,7 +581,7 @@ client.on('messageCreate', async (message) => {
     }
   }
 
-  // 📈 SEVİYE / RANK KOMUTLARI (Sadece #level-bilgi kanalında çalışır)
+  // 📈 SEVİYE / RANK KOMUTLARI
   if (
     content === '!seviye' || content === '!level' || content === '!rank' || content.startsWith('!seviye ') || content.startsWith('!level ') || content.startsWith('!rank ') ||
     content === '!liderlik' || content === '!top'
@@ -598,6 +685,7 @@ client.on('messageCreate', async (message) => {
       .setTitle('🤖 Bot Komut & Sistem Listesi')
       .addFields(
         { name: '🧠 Yapay Zeka', value: 'Beni etiketleyip istediğin soruyu sorabilirsin! (Örn: `@Boom Bot nasılsın?`)' },
+        { name: '🎯 Valorant Ajan Seçici', value: '`#rastgele-ajan` kanalındaki butona basarak rastgele ajan seçebilirsin!' },
         { name: '⭐ Seviye Sistemi (#level-bilgi)', value: '`!seviye` - Seviye kartınızı gösterir.\n`!liderlik` - Sunucu sıralamasını gösterir.' },
         { name: '🛡️ Otomatik Güvenlik', value: '• **Küfür Engeli:** Otomatik silinir.\n• **Link Engeli:** Kademeli uyarı/timeout/ban.' },
         { name: '🎮 Eğlence / Bilgi', value: '`!zar`, `!yazıtura`, `!ping`, `!avatar`, `!sunucu`' }
