@@ -244,7 +244,6 @@ client.on('messageCreate', async (message) => {
     let userData = userLevelMap.get(userKey) || { xp: 0, level: 1, lastXpTime: 0 };
     const now = Date.now();
 
-    // 60 Saniye Cooldown Kontrolü (Spam Engeli)
     if (now - userData.lastXpTime >= 60000) {
       const earnedXP = Math.floor(Math.random() * 11) + 15; // 15-25 XP
       userData.xp += earnedXP;
@@ -273,6 +272,37 @@ client.on('messageCreate', async (message) => {
 
   // ================= KOMUTLAR ================= //
 
+  // 👑 YÖNETİCİ & ADMIN KONTROL PANELİ (!admin / !yönetim)
+  if (content === '!admin' || content === '!yönetim' || content === '!yonetim') {
+    if (!isAuthorized(message.member)) {
+      return message.reply('❌ Bu komutu sadece **Yönetici** veya **Moderatör** rolündekiler kullanabilir.');
+    }
+
+    const adminEmbed = new EmbedBuilder()
+      .setColor('#ED4245')
+      .setTitle('🛡️ YÖNETİCİ & MODERATÖR KONTROL PANELİ')
+      .setAuthor({ name: `${message.guild.name} Yönetimi`, iconURL: message.guild.iconURL({ dynamic: true }) })
+      .setDescription('Sunucumuzda yetkililere özel moderasyon komutları ve aktif güvenlik modülleri aşağıdadır:')
+      .addFields(
+        {
+          name: '🛠️ Moderasyon Komutları',
+          value: '• `!sil [1-100]` : Belirtilen sayıda mesajı topluca siler.\n• `!at [@üye]` : Etiketlenen kullanıcıyı sunucudan atar (Kick).\n• `!kurallar` : Kurallar panosunu kanala gönderir.\n• `!admin` : Bu yönetim panelini açar.'
+        },
+        {
+          name: '⚙️ Aktif Koruma Modülleri',
+          value: '• 🟢 **Küfür Filtresi:** Açık (Yetkililer hariç mesajları siler).\n• 🟢 **Reklam / Link Engeli:** Açık (5 aşamalı ceza sistemi).\n• 🟢 **Otomatik Rol:** Açık (Yeni üyelere `Kayıtlı Üye` rolü tanımlanır).\n• 🟢 **Karşılama Sistemi:** Açık (`📙・hoşgeldiniz` kanalında aktif).\n• 🟢 **Mod-Log Sistemi:** Açık (`#log` veya `#mod-log` kanalında aktif).'
+        },
+        {
+          name: '📊 Sunucu & Bot Bilgisi',
+          value: `• **Gecikme (Ping):** ${client.ws.ping}ms\n• **Toplam Üye:** ${message.guild.memberCount}`
+        }
+      )
+      .setFooter({ text: 'Bu panel sadece yetkililere özeldir.' })
+      .setTimestamp();
+
+    return message.reply({ embeds: [adminEmbed] });
+  }
+
   // 📈 SEVİYE / RANK KOMUTLARI (Sadece #level-bilgi kanalında çalışır)
   if (
     content === '!seviye' || content === '!level' || content === '!rank' || content.startsWith('!seviye ') || content.startsWith('!level ') || content.startsWith('!rank ') ||
@@ -287,7 +317,6 @@ client.on('messageCreate', async (message) => {
       return;
     }
 
-    // !seviye / !level / !rank
     if (content === '!seviye' || content === '!level' || content === '!rank' || content.startsWith('!seviye ') || content.startsWith('!level ') || content.startsWith('!rank ')) {
       const targetUser = message.mentions.users.first() || message.author;
       const targetKey = `${message.guild.id}-${targetUser.id}`;
@@ -309,7 +338,6 @@ client.on('messageCreate', async (message) => {
       return message.reply({ embeds: [levelEmbed] });
     }
 
-    // !liderlik / !top
     if (content === '!liderlik' || content === '!top') {
       const guildUsers = [];
       userLevelMap.forEach((data, key) => {
@@ -346,7 +374,7 @@ client.on('messageCreate', async (message) => {
     return message.reply(`Aleykümselam ${message.author}! Hoş geldin 👋`);
   }
 
-  // 📜 KURALLAR KOMUTU (Sadece Yönetici ve Moderatörler)
+  // 📜 KURALLAR KOMUTU (Sadece Yetkililer)
   if (content === '!kurallar') {
     if (!isAuthorized(message.member)) {
       return message.reply('❌ Bu komutu sadece **Yönetici** veya **Moderatör** rolündekiler kullanabilir.');
