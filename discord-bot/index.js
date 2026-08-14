@@ -244,7 +244,7 @@ client.on('messageCreate', async (message) => {
     const userPrompt = message.content.replace(new RegExp(`<@!?${client.user.id}>`, 'g'), '').trim();
 
     if (!userPrompt) {
-      return message.reply('Efendim? 😊 Bana bir soru sormak istersen etiketleyip sorunu yazabilirsin!\n*Örnek:* `@Bot nasılsın?`');
+      return message.reply('Efendim? 😊 Bana bir soru sormak istersen etiketleyip sorunu yazabilirsin!\n*Örnek:* `@Boom Bot nasılsın?`');
     }
 
     const apiKey = process.env.GEMINI_API_KEY;
@@ -255,13 +255,13 @@ client.on('messageCreate', async (message) => {
     try {
       await message.channel.sendTyping();
 
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{
             parts: [{
-              text: `Sen Discord sunucusunda çalışan zeki, esprili ve yardımsever bir asistansın. Kullanıcıya samimi, Türkçe ve kısa-öz bir cevap ver. Soru: "${userPrompt}"`
+              text: `Sen Discord sunucusunda hizmet veren samimi, esprili, zeki ve yardımsever bir asistansın. Adın: Boom Bot. Kullanıcıya Türkçe olarak samimi, doğal ve sohbet ortamına uygun şekilde cevap ver. Aşırı uzun ve resmi destanlar yazma. Kullanıcının sorusu: "${userPrompt}"`
             }]
           }]
         })
@@ -276,7 +276,7 @@ client.on('messageCreate', async (message) => {
       const replyText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
 
       if (!replyText) {
-        return message.reply('Cevap üretilemedi, lütfen soruyu tekrar sor! 🤔');
+        return message.reply('Şu an düşüncelerimi toparlayamadım, lütfen sorunu tekrar sor! 🤔');
       }
 
       if (replyText.length > 2000) {
@@ -484,7 +484,7 @@ client.on('messageCreate', async (message) => {
       .setColor('#5865F2')
       .setTitle('🤖 Bot Komut & Sistem Listesi')
       .addFields(
-        { name: '🧠 Yapay Zeka', value: 'Beni etiketleyip istediğin soruyu sorabilirsin! (Örn: `@Bot nasılsın?`)' },
+        { name: '🧠 Yapay Zeka', value: 'Beni etiketleyip istediğin soruyu sorabilirsin! (Örn: `@Boom Bot nasılsın?`)' },
         { name: '⭐ Seviye Sistemi (#level-bilgi)', value: '`!seviye` - Seviye kartınızı gösterir.\n`!liderlik` - Sunucu sıralamasını gösterir.' },
         { name: '🛡️ Otomatik Güvenlik', value: '• **Küfür Engeli:** Otomatik silinir.\n• **Link Engeli:** Kademeli uyarı/timeout/ban.' },
         { name: '🎮 Eğlence / Bilgi', value: '`!zar`, `!yazıtura`, `!ping`, `!avatar`, `!sunucu`' }
