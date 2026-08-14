@@ -1019,7 +1019,7 @@ client.on('messageCreate', async (message) => {
     return message.reply(`Aleykümselam ${message.author}! Hoş geldin 👋`);
   }
 
-  // 📜 KURALLAR KOMUTU (Sadeleştirildi)
+  // 📜 KURALLAR KOMUTU (Orijinal Taçlı Tasarıma Geri Döndürüldü)
   if (content === '!kurallar') {
     if (!isAuthorized(message.member)) {
       return message.reply('❌ Bu komutu sadece **Yönetici** veya **Moderatör** rolündekiler kullanabilir.');
@@ -1027,17 +1027,15 @@ client.on('messageCreate', async (message) => {
     await message.delete().catch(() => {});
     const kurallarEmbed = new EmbedBuilder()
       .setColor('#FFB000')
-      .setTitle('👑 SUNUCU KURALLARI')
+      .setTitle('KURALLAR')
       .setDescription(
-        '• **Kanalları amacı dışında kullanmak yasaktır.**\n\n' +
-        '• **Küfür, argo, hakaret ve kışkırtıcı söylemler yasaktır.**\n\n' +
-        '• **Özelden veya kanallardan reklam yapmak kesinlikle yasaktır.**\n\n' +
-        '• **Spam, flood ve sohbeti bozan davranışlar yasaktır.**\n\n' +
-        '• **Din, dil, ırk ve cinsiyet ayrımcılığı yapmak yasaktır.**\n\n' +
-        '• **Siyaset yapmak ve tartışma ortamı yaratmak yasaktır.**'
-      )
-      .setFooter({ text: 'K7e • Kurallar Panosu' })
-      .setTimestamp();
+        '👑 • **Kanalları amacı dışında kullanmak yasaktır!**\n\n' +
+        '👑 • **Küfür, argo, hakaret yasaktır!**\n\n' +
+        '👑 • **Özelden reklam, DM\'den reklam yasaktır!**\n\n' +
+        '👑 • **Spam, Flood Yasaktır!**\n\n' +
+        '👑 • **Din, dil, ırk ve cinsiyetçilik ayrımı yasaktır.**\n\n' +
+        '👑 • **Siyaset yapmak yasaktır.**'
+      );
     return message.channel.send({ embeds: [kurallarEmbed] });
   }
 
