@@ -38,7 +38,7 @@ const client = new Client({
 // Link Uyarıları Hafızası
 const linkWarnings = new Map();
 
-// ================= KALICI SEVİYE & XP SİSTEMİ ================= //
+// ================= KALICI VE SONSUZ SEVİYE SİSTEMİ ================= //
 const DATA_FILE = path.join(__dirname, 'levels.json');
 
 // Kayıtlı verileri dosyadan yükleme fonksiyonu
@@ -68,9 +68,9 @@ function saveLevels() {
 // Bot başlarken kayıtlı verileri hafızaya al
 const userLevelMap = loadLevels();
 
-// Seviye İçin Gereken XP Hesaplama Fonksiyonu
+// 📈 Dinamik Seviye Eğrisi (İlk leveller kolay, yükseldikçe katlanarak zorlaşır)
 function getNeededXP(level) {
-  return 50 * Math.pow(level, 2) + 50 * level;
+  return Math.floor(30 * Math.pow(level, 2) + 20 * level);
 }
 
 // Görsel İlerleme Çubuğu (Progress Bar)
@@ -320,20 +320,19 @@ client.on('messageCreate', async (message) => {
     }
   }
 
-  // 4. SOHBET XP VE SEVİYE SİSTEMİ (Hızlı ve Kalıcı)
+  // 4. SOHBET XP VE SEVİYE SİSTEMİ (Limitsiz ve Kalıcı)
   if (!content.startsWith('!')) {
     let userData = userLevelMap.get(userKey) || { xp: 0, level: 1, lastXpTime: 0 };
     const now = Date.now();
 
-    // 5 Saniye Cooldown (Hızlı seviye atlama ve kolay test için)
     if (now - userData.lastXpTime >= 5000) {
-      const earnedXP = Math.floor(Math.random() * 16) + 25; // 25-40 XP verir
+      const earnedXP = Math.floor(Math.random() * 16) + 25; // 25-40 XP
       userData.xp += earnedXP;
       userData.lastXpTime = now;
 
       const neededXP = getNeededXP(userData.level);
 
-      // Seviye Atlama Duyurusu -> Doğrudan #level-bilgi kanalına gider
+      // Seviye Atlama Kontrolü (Sonsuz Seviye)
       if (userData.xp >= neededXP) {
         userData.level += 1;
 
@@ -349,7 +348,7 @@ client.on('messageCreate', async (message) => {
       }
 
       userLevelMap.set(userKey, userData);
-      saveLevels(); // Anında diske kaydeder
+      saveLevels();
     }
   }
 
@@ -369,11 +368,24 @@ client.on('messageCreate', async (message) => {
       .addFields(
         {
           name: '🛠️ Moderasyon Komutları',
-          value: '• `!sustur [@üye] [dakika] [sebep]` : Kullanıcıya timeout atar.\n• `!sil [1-100]` : Belirtilen sayıda mesajı topluca siler.\n• `!at [@üye]` : Etiketlenen kullanıcıyı sunucudan atar (Kick).\n• `!kurallar` : Kurallar panosunu kanala gönderir.\n• `!admin` : Bu yönetim panelini açar.'
+          value: 
+            '• `!xpekle [@üye] [miktar]` : Kullanıcıya XP ekler.\n' +
+            '• `!sustur [@üye] [dakika] [sebep]` : Kullanıcıya timeout atar.\n' +
+            '• `!sil [1-100]` : Belirtilen sayıda mesajı topluca siler.\n' +
+            '• `!at [@üye]` : Etiketlenen kullanıcıyı sunucudan atar (Kick).\n' +
+            '• `!kurallar` : Kurallar panosunu kanala gönderir.\n' +
+            '• `!admin` : Bu yönetim panelini açar.'
         },
         {
           name: '⚙️ Aktif Koruma Modülleri',
-          value: '• 🟢 **Yapay Zeka:** Açık (Botu etiketleyerek soru sorulabilir).\n• 🟢 **Kalıcı Seviye Sistemi:** Açık (Veriler anında diske kaydedilir).\n• 🟢 **Küfür Filtresi:** Açık (Yetkililer hariç mesajları siler).\n• 🟢 **Reklam / Link Engeli:** Açık (5 aşamalı ceza sistemi).\n• 🟢 **Otomatik Rol:** Açık (Yeni üyelere `Kayıtlı Üye` rolü tanımlanır).\n• 🟢 **Karşılama Sistemi:** Açık (`📙・hoşgeldiniz` kanalında aktif).\n• 🟢 **Mod-Log Sistemi:** Açık (`#log` veya `#mod-log` kanalında aktif).'
+          value: 
+            '• 🟢 **Yapay Zeka:** Açık (Botu etiketleyerek soru sorulabilir).\n' +
+            '• 🟢 **Limitsiz Seviye Sistemi:** Açık (Seviye sınırı yok, veriler anında kaydedilir).\n' +
+            '• 🟢 **Küfür Filtresi:** Açık (Yetkililer hariç mesajları siler).\n' +
+            '• 🟢 **Reklam / Link Engeli:** Açık (5 aşamalı ceza sistemi).\n' +
+            '• 🟢 **Otomatik Rol:** Açık (Yeni üyelere `Kayıtlı Üye` rolü tanımlanır).\n' +
+            '• 🟢 **Karşılama Sistemi:** Açık (`📙・hoşgeldiniz` kanalında aktif).\n' +
+            '• 🟢 **Mod-Log Sistemi:** Açık (`#log` veya `#mod-log` kanalında aktif).'
         },
         {
           name: '📊 Sunucu & Bot Bilgisi',
@@ -384,6 +396,57 @@ client.on('messageCreate', async (message) => {
       .setTimestamp();
 
     return message.reply({ embeds: [adminEmbed] });
+  }
+
+  // ⭐ YÖNETİCİ XP EKLEME KOMUTU (!xpekle / !xpver)
+  if (content.startsWith('!xpekle') || content.startsWith('!xp-ekle') || content.startsWith('!xpver') || content.startsWith('!xp-ver')) {
+    if (!isAuthorized(message.member)) {
+      return message.reply('❌ Bu komutu sadece **Yönetici** veya **Moderatör** rolündekiler kullanabilir.');
+    }
+
+    const args = message.content.split(/\s+/).slice(1);
+    const targetMember = message.mentions.members.first();
+    if (!targetMember) {
+      return message.reply('⚠️ Lütfen XP verilecek kullanıcıyı etiketleyin!\n👉 **Kullanım:** `!xpekle @kullanıcı [miktar]`');
+    }
+
+    const amount = parseInt(args[1]);
+    if (isNaN(amount) || amount <= 0) {
+      return message.reply('⚠️ Lütfen geçerli pozitif bir XP miktarı girin (Örn: `!xpekle @kullanıcı 100`)!');
+    }
+
+    const targetKey = `${message.guild.id}-${targetMember.id}`;
+    let userData = userLevelMap.get(targetKey) || { xp: 0, level: 1, lastXpTime: 0 };
+
+    userData.xp += amount;
+    const oldLevel = userData.level;
+
+    while (userData.xp >= getNeededXP(userData.level)) {
+      userData.level += 1;
+    }
+
+    userLevelMap.set(targetKey, userData);
+    saveLevels();
+
+    let responseMsg = `⭐ ${targetMember} kullanıcısına başarıyla **+${amount} XP** eklendi! (Toplam XP: **${userData.xp}**)`;
+
+    if (userData.level > oldLevel) {
+      responseMsg += `\n🎉 **Tebrikler!** Yeni Seviyesi: **${userData.level}** 🚀`;
+
+      const levelChannel = getLevelChannel(message.guild);
+      if (levelChannel) {
+        const levelUpEmbed = new EmbedBuilder()
+          .setColor('#57F287')
+          .setTitle('🎉 SEVİYE ATLADIN!')
+          .setDescription(`Tebrikler ${targetMember}! Yönetici tarafından verilen XP ile seviye atladın! 🚀\n\n⭐ Yeni Seviyen: **${userData.level}**`)
+          .setThumbnail(targetMember.user.displayAvatarURL({ dynamic: true }))
+          .setTimestamp();
+
+        levelChannel.send({ embeds: [levelUpEmbed] }).catch(() => {});
+      }
+    }
+
+    return message.reply(responseMsg);
   }
 
   // ⏰ SUSTURMA / TIMEOUT KOMUTU
@@ -444,7 +507,7 @@ client.on('messageCreate', async (message) => {
           { name: '⭐ Toplam XP', value: `**${userData.xp}** / ${neededXP} XP`, inline: true },
           { name: '📊 İlerleme Durumu', value: createProgressBar(userData.xp, neededXP), inline: false }
         )
-        .setFooter({ text: 'Sohbet ederek XP kazanabilirsiniz!' })
+        .setFooter({ text: 'Sohbet ederek sınırsız XP kazanabilirsiniz!' })
         .setTimestamp();
 
       return message.reply({ embeds: [levelEmbed] });
