@@ -320,18 +320,20 @@ client.on('messageCreate', async (message) => {
     }
   }
 
-  // 4. SOHBET XP VE SEVİYE SİSTEMİ (Otomatik Dosyaya Kayıtlı)
+  // 4. SOHBET XP VE SEVİYE SİSTEMİ (Hızlı ve Kalıcı)
   if (!content.startsWith('!')) {
     let userData = userLevelMap.get(userKey) || { xp: 0, level: 1, lastXpTime: 0 };
     const now = Date.now();
 
-    if (now - userData.lastXpTime >= 60000) {
-      const earnedXP = Math.floor(Math.random() * 11) + 15; // 15-25 XP
+    // 5 Saniye Cooldown (Hızlı seviye atlama ve kolay test için)
+    if (now - userData.lastXpTime >= 5000) {
+      const earnedXP = Math.floor(Math.random() * 16) + 25; // 25-40 XP verir
       userData.xp += earnedXP;
       userData.lastXpTime = now;
 
       const neededXP = getNeededXP(userData.level);
 
+      // Seviye Atlama Duyurusu -> Doğrudan #level-bilgi kanalına gider
       if (userData.xp >= neededXP) {
         userData.level += 1;
 
@@ -347,7 +349,7 @@ client.on('messageCreate', async (message) => {
       }
 
       userLevelMap.set(userKey, userData);
-      saveLevels(); // Kalıcı olarak levels.json dosyasına yaz!
+      saveLevels(); // Anında diske kaydeder
     }
   }
 
