@@ -148,7 +148,7 @@ function getLevelChannel(guild) {
     c.name.includes('level-bilgi') || 
     c.name.includes('levelbilgi') || 
     c.name.includes('seviye-bilgi') || 
-    c.name.includes('seviyebilgi') ||
+    c.name.includes('seviyebilgi') || 
     c.name.includes('level-bilgisi')
   );
 }
@@ -159,8 +159,8 @@ function getValoNewsChannel(guild) {
     c.name.includes('valorant-haber') || 
     c.name.includes('valohaber') || 
     c.name.includes('valo-haber') || 
-    c.name.includes('oyun-haber') ||
-    c.name.includes('oyun-haberleri') ||
+    c.name.includes('oyun-haber') || 
+    c.name.includes('oyun-haberleri') || 
     c.name.includes('haberler')
   );
 }
@@ -252,7 +252,7 @@ client.once('ready', async () => {
 
 // ================= 🔍 HATASIZ GELİŞMİŞ MOD-LOG SİSTEMİ ================= //
 
-// 1. MESAJ SİLİNDİ LOGU (Hafıza / Null Korumalı)
+// 1. MESAJ SİLİNDİ LOGU
 client.on('messageDelete', async (message) => {
   try {
     if (!message.guild || message.author?.bot) return;
@@ -280,7 +280,7 @@ client.on('messageDelete', async (message) => {
   }
 });
 
-// 2. MESAJ DÜZENLENDİ LOGU (Null Korumalı)
+// 2. MESAJ DÜZENLENDİ LOGU
 client.on('messageUpdate', async (oldMessage, newMessage) => {
   try {
     if (!oldMessage.guild || oldMessage.author?.bot) return;
@@ -343,7 +343,7 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
       return logChannel.send({ embeds: [embed] }).catch(() => {});
     }
 
-    // B. Takma Ad (Nickname)
+    // B. Takma Ad
     if (oldMember.nickname !== newMember.nickname) {
       const embed = new EmbedBuilder()
         .setColor('#5865F2')
@@ -1019,6 +1019,7 @@ client.on('messageCreate', async (message) => {
     return message.reply(`Aleykümselam ${message.author}! Hoş geldin 👋`);
   }
 
+  // 📜 KURALLAR KOMUTU (Sadeleştirildi)
   if (content === '!kurallar') {
     if (!isAuthorized(message.member)) {
       return message.reply('❌ Bu komutu sadece **Yönetici** veya **Moderatör** rolündekiler kullanabilir.');
@@ -1026,15 +1027,17 @@ client.on('messageCreate', async (message) => {
     await message.delete().catch(() => {});
     const kurallarEmbed = new EmbedBuilder()
       .setColor('#FFB000')
-      .setTitle('KURALLAR')
+      .setTitle('👑 SUNUCU KURALLARI')
       .setDescription(
-        '👑 • **Kanalları amacı dışında kullanmak yasaktır!**\n\n' +
-        '👑 • **Küfür, argo, hakaret yasaktır!**\n\n' +
-        '👑 • **Özelden reklam, DM\'den reklam yasaktır!**\n\n' +
-        '👑 • **Spam, Flood Yasaktır!**\n\n' +
-        '👑 • **Din, dil, ırk ve cinsiyetçilik ayrımı yasaktır.**\n\n' +
-        '👑 • **Siyaset yapmak yasaktır.**'
-      );
+        '• **Kanalları amacı dışında kullanmak yasaktır.**\n\n' +
+        '• **Küfür, argo, hakaret ve kışkırtıcı söylemler yasaktır.**\n\n' +
+        '• **Özelden veya kanallardan reklam yapmak kesinlikle yasaktır.**\n\n' +
+        '• **Spam, flood ve sohbeti bozan davranışlar yasaktır.**\n\n' +
+        '• **Din, dil, ırk ve cinsiyet ayrımcılığı yapmak yasaktır.**\n\n' +
+        '• **Siyaset yapmak ve tartışma ortamı yaratmak yasaktır.**'
+      )
+      .setFooter({ text: 'K7e • Kurallar Panosu' })
+      .setTimestamp();
     return message.channel.send({ embeds: [kurallarEmbed] });
   }
 
