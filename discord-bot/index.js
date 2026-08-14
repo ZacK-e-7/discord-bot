@@ -772,6 +772,43 @@ client.on('messageCreate', async (message) => {
 
   // ================= KOMUTLAR ================= //
 
+  // 📜 GÖRSELDEKİ BİREBİR KURALLAR KOMUTU (!kurallar)
+  if (content === '!kurallar') {
+    if (!isAuthorized(message.member)) {
+      return message.reply('❌ Bu komutu sadece **Yönetici** veya **Moderatör** rolündekiler kullanabilir.');
+    }
+    await message.delete().catch(() => {});
+
+    const kurallarEmbed = new EmbedBuilder()
+      .setColor('#FFAC33') // Görseldeki altın sarısı çerçeve
+      .setAuthor({ 
+        name: client.user.username, 
+        iconURL: client.user.displayAvatarURL({ dynamic: true }) 
+      })
+      .setTitle('KURALLAR')
+      .setDescription(
+        '👑 • **Kanalları amacı dışında kullanmak yasaktır!**\n\n' +
+        '👑 • **Küfür, argo, hakaret yasaktır!**\n\n' +
+        '👑 • **Özelden reklam, DM\'den reklam yasaktır!**\n\n' +
+        '👑 • **Spam, Flood Yasaktır!**\n\n' +
+        '👑 • **Chatte tartışma çıkartıp genel huzuru bozmak yasaktır.**\n\n' +
+        '👑 • **Din, dil, ırk ve cinsiyetçilik ayrımı yasaktır.**\n\n' +
+        '👑 • **Cinsel ve şiddet içerikli paylaşımlar yasaktır.**\n\n' +
+        '👑 • **Herhangi bir oyunun hesap satışı, takası yasaktır.**\n\n' +
+        '👑 • **Sunucu üyelerinden para, oyun parası, hesap vb. şeyler istemek yasaktır.**\n\n' +
+        '👑 • **Ses kanallarını trollemek yasaktır.**\n\n' +
+        '👑 • **İnsanların kişisel bilgilerini ve özel hayatıyla ilgili bilgileri paylaşmak yasaktır.**\n\n' +
+        '👑 • **Sunucumuzda "Hesap Boost" işlemleri yasaktır.**\n\n' +
+        '👑 • **Sunucumuzda yetkili gibi davranmak yasaktır.**\n\n' +
+        '👑 • **Sunucumuzda siyaset yapmak yasaktır.**'
+      )
+      .setThumbnail(message.guild.iconURL({ dynamic: true }) || client.user.displayAvatarURL({ dynamic: true }))
+      .setFooter({ text: `${message.guild.name} • Sunucu Kuralları` })
+      .setTimestamp();
+
+    return message.channel.send({ embeds: [kurallarEmbed] });
+  }
+
   // 📰 VALORANT HABER KOMUTU (!valohaber)
   if (content === '!valohaber' || content === '!valo-haber') {
     const news = await fetchLatestValoNews();
@@ -1017,26 +1054,6 @@ client.on('messageCreate', async (message) => {
   // Diğer Genel Komutlar
   if (['sa', 's.a', 'selam'].includes(content)) {
     return message.reply(`Aleykümselam ${message.author}! Hoş geldin 👋`);
-  }
-
-  // 📜 KURALLAR KOMUTU (Orijinal Taçlı Tasarıma Geri Döndürüldü)
-  if (content === '!kurallar') {
-    if (!isAuthorized(message.member)) {
-      return message.reply('❌ Bu komutu sadece **Yönetici** veya **Moderatör** rolündekiler kullanabilir.');
-    }
-    await message.delete().catch(() => {});
-    const kurallarEmbed = new EmbedBuilder()
-      .setColor('#FFB000')
-      .setTitle('KURALLAR')
-      .setDescription(
-        '👑 • **Kanalları amacı dışında kullanmak yasaktır!**\n\n' +
-        '👑 • **Küfür, argo, hakaret yasaktır!**\n\n' +
-        '👑 • **Özelden reklam, DM\'den reklam yasaktır!**\n\n' +
-        '👑 • **Spam, Flood Yasaktır!**\n\n' +
-        '👑 • **Din, dil, ırk ve cinsiyetçilik ayrımı yasaktır.**\n\n' +
-        '👑 • **Siyaset yapmak yasaktır.**'
-      );
-    return message.channel.send({ embeds: [kurallarEmbed] });
   }
 
   if (content === '!yardım' || content === '!help') {
