@@ -286,7 +286,7 @@ client.on('messageCreate', async (message) => {
       .addFields(
         {
           name: '🛠️ Moderasyon Komutları',
-          value: '• `!sil [1-100]` : Belirtilen sayıda mesajı topluca siler.\n• `!at [@üye]` : Etiketlenen kullanıcıyı sunucudan atar (Kick).\n• `!kurallar` : Kurallar panosunu kanala gönderir.\n• `!admin` : Bu yönetim panelini açar.'
+          value: '• `!sustur [@üye] [dakika] [sebep]` : Kullanıcıya timeout atar.\n• `!sil [1-100]` : Belirtilen sayıda mesajı topluca siler.\n• `!at [@üye]` : Etiketlenen kullanıcıyı sunucudan atar (Kick).\n• `!kurallar` : Kurallar panosunu kanala gönderir.\n• `!admin` : Bu yönetim panelini açar.'
         },
         {
           name: '⚙️ Aktif Koruma Modülleri',
@@ -301,6 +301,35 @@ client.on('messageCreate', async (message) => {
       .setTimestamp();
 
     return message.reply({ embeds: [adminEmbed] });
+  }
+
+  // ⏰ TIMEOUT / SUSTURMA KOMUTU (!sustur / !timeout)
+  if (content.startsWith('!sustur') || content.startsWith('!timeout')) {
+    if (!isAuthorized(message.member)) return message.reply('❌ Bu komutu kullanmak için yetkiniz yok.');
+    
+    const args = message.content.split(/\s+/).slice(1);
+    const member = message.mentions.members.first();
+    if (!member) {
+      return message.reply('⚠️ Lütfen susturulacak kullanıcıyı etiketleyin!\n👉 **Kullanım:** `!sustur @kullanıcı [dakika] [sebep]`');
+    }
+
+    const dakika = parseInt(args[1]);
+    if (isNaN(dakika) || dakika <= 0 || dakika > 40320) {
+      return message.reply('⚠️ Lütfen geçerli bir süre belirtin (Dakika cinsinden, örn: 5, 10, 60)!');
+    }
+
+    const sebep = args.slice(2).join(' ') || 'Sebep belirtilmedi';
+
+    if (!member.moderatable) {
+      return message.reply('❌ Bu kullanıcıyı susturamam (Yetkisi benden veya sizden yüksek olabilir).');
+    }
+
+    try {
+      await member.timeout(dakika * 60 * 1000, `${message.author.tag} tarafından: ${sebep}`);
+      return message.reply(`⏰ **${member.user.tag}** kullanıcısı **${dakika} dakika** susturuldu!\n📝 **Sebep:** ${sebep}`);
+    } catch (err) {
+      return message.reply('❌ Kullanıcı susturulurken bir hata oluştu.');
+    }
   }
 
   // 📈 SEVİYE / RANK KOMUTLARI (Sadece #level-bilgi kanalında çalışır)
