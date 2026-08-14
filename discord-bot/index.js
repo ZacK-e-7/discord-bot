@@ -82,7 +82,7 @@ const valorantAgents = [
   { name: 'Vyse', role: 'Gözcü 🌹', color: '#800020', desc: 'Sıvı metal gülleri ve duvar tuzaklarıyla rakipleri silahsız bırak!' }
 ];
 
-// ================= KALICI VE SONSUZ SEVİYE SİSTEMİ ================= //
+// ================= KALICI SEVİYE & XP SİSTEMİ ================= //
 const DATA_FILE = path.join(__dirname, 'levels.json');
 
 function loadLevels() {
@@ -121,6 +121,33 @@ function createProgressBar(currentXP, neededXP) {
   const bar = '🟩'.repeat(filledBars) + '⬛'.repeat(emptyBars);
   return `${bar} (%${Math.floor(percentage * 100)})`;
 }
+
+// ================= KALICI UYARI SİSTEMİ ================= //
+const WARN_FILE = path.join(__dirname, 'warnings.json');
+
+function loadWarnings() {
+  try {
+    if (fs.existsSync(WARN_FILE)) {
+      const data = fs.readFileSync(WARN_FILE, 'utf8');
+      const parsed = JSON.parse(data);
+      return new Map(Object.entries(parsed));
+    }
+  } catch (err) {
+    console.error('Uyarı verileri okunurken hata oluştu:', err);
+  }
+  return new Map();
+}
+
+function saveWarnings() {
+  try {
+    const obj = Object.fromEntries(userWarningsMap);
+    fs.writeFileSync(WARN_FILE, JSON.stringify(obj, null, 2), 'utf8');
+  } catch (err) {
+    console.error('Uyarı verileri kaydedilirken hata oluştu:', err);
+  }
+}
+
+const userWarningsMap = loadWarnings();
 
 // Yasaklı Küfür Listesi
 const kufurler = [
@@ -203,6 +230,7 @@ async function fetchLatestValoNews() {
 client.once('ready', async () => {
   console.log(`🤖 Bot aktif! ${client.user.tag} olarak giriş yapıldı.`);
   console.log(`💾 Toplam ${userLevelMap.size} kullanıcının seviye verisi yüklendi.`);
+  console.log(`⚠️ Toplam ${userWarningsMap.size} kullanıcının uyarı kaydı yüklendi.`);
 
   const initialNews = await fetchLatestValoNews();
   if (initialNews) lastValoNewsUrl = initialNews.url;
@@ -252,7 +280,6 @@ client.once('ready', async () => {
 
 // ================= 🔍 HATASIZ GELİŞMİŞ MOD-LOG SİSTEMİ ================= //
 
-// 1. MESAJ SİLİNDİ LOGU
 client.on('messageDelete', async (message) => {
   try {
     if (!message.guild || message.author?.bot) return;
@@ -280,7 +307,6 @@ client.on('messageDelete', async (message) => {
   }
 });
 
-// 2. MESAJ DÜZENLENDİ LOGU
 client.on('messageUpdate', async (oldMessage, newMessage) => {
   try {
     if (!oldMessage.guild || oldMessage.author?.bot) return;
@@ -310,13 +336,11 @@ client.on('messageUpdate', async (oldMessage, newMessage) => {
   }
 });
 
-// 3. KULLANICI GÜNCELLEMELERİ (Rol, Nickname, Timeout)
 client.on('guildMemberUpdate', async (oldMember, newMember) => {
   try {
     const logChannel = getLogChannel(newMember.guild);
     if (!logChannel) return;
 
-    // A. Timeout
     if (!oldMember.isCommunicationDisabled() && newMember.isCommunicationDisabled()) {
       const timeoutUntil = newMember.communicationDisabledUntilTimestamp;
       const minutes = Math.ceil((timeoutUntil - Date.now()) / (1000 * 60));
@@ -343,7 +367,6 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
       return logChannel.send({ embeds: [embed] }).catch(() => {});
     }
 
-    // B. Takma Ad
     if (oldMember.nickname !== newMember.nickname) {
       const embed = new EmbedBuilder()
         .setColor('#5865F2')
@@ -359,7 +382,6 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
       return logChannel.send({ embeds: [embed] }).catch(() => {});
     }
 
-    // C. Rol Değişikliği
     if (oldMember.roles.cache.size !== newMember.roles.cache.size) {
       const addedRoles = newMember.roles.cache.filter(role => !oldMember.roles.cache.has(role.id));
       const removedRoles = oldMember.roles.cache.filter(role => !newMember.roles.cache.has(role.id));
@@ -397,7 +419,6 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
   }
 });
 
-// 4. KANAL OLUŞTURULDU LOGU
 client.on('channelCreate', async (channel) => {
   try {
     if (!channel.guild) return;
@@ -418,7 +439,6 @@ client.on('channelCreate', async (channel) => {
   } catch (e) {}
 });
 
-// 5. KANAL SİLİNDİ LOGU
 client.on('channelDelete', async (channel) => {
   try {
     if (!channel.guild) return;
@@ -436,7 +456,6 @@ client.on('channelDelete', async (channel) => {
   } catch (e) {}
 });
 
-// 6. ROL OLUŞTURULDU / SİLİNDİ LOGU
 client.on('roleCreate', async (role) => {
   try {
     const logChannel = getLogChannel(role.guild);
@@ -469,7 +488,6 @@ client.on('roleDelete', async (role) => {
   } catch (e) {}
 });
 
-// 7. SUNUCU İSMİ DEĞİŞTİRİLDİ
 client.on('guildUpdate', async (oldGuild, newGuild) => {
   try {
     const logChannel = getLogChannel(newGuild);
@@ -491,7 +509,6 @@ client.on('guildUpdate', async (oldGuild, newGuild) => {
   } catch (e) {}
 });
 
-// 8. SES KANALI HAREKETLERİ
 client.on('voiceStateUpdate', async (oldState, newState) => {
   try {
     const logChannel = getLogChannel(newState.guild || oldState.guild);
@@ -500,7 +517,6 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
     const member = newState.member || oldState.member;
     if (!member || member.user?.bot) return;
 
-    // Giriş
     if (!oldState.channelId && newState.channelId) {
       const embed = new EmbedBuilder()
         .setColor('#57F287')
@@ -511,7 +527,6 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
       return logChannel.send({ embeds: [embed] }).catch(() => {});
     }
 
-    // Çıkış
     if (oldState.channelId && !newState.channelId) {
       const embed = new EmbedBuilder()
         .setColor('#ED4245')
@@ -522,7 +537,6 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
       return logChannel.send({ embeds: [embed] }).catch(() => {});
     }
 
-    // Değiştirme
     if (oldState.channelId && newState.channelId && oldState.channelId !== newState.channelId) {
       const embed = new EmbedBuilder()
         .setColor('#5865F2')
@@ -535,7 +549,6 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
   } catch (e) {}
 });
 
-// 9. BAN VE UNBAN LOGLARI
 client.on('guildBanAdd', async (ban) => {
   try {
     const logChannel = getLogChannel(ban.guild);
@@ -772,6 +785,159 @@ client.on('messageCreate', async (message) => {
 
   // ================= KOMUTLAR ================= //
 
+  // ⚠️ UYARI LİSTESİ (!uyarılar / !uyarilar)
+  if (content.startsWith('!uyarılar') || content.startsWith('!uyarilar')) {
+    if (!isAuthorized(message.member)) {
+      return message.reply('❌ Bu komutu sadece **Yönetici** veya **Moderatör** rolündekiler kullanabilir.');
+    }
+
+    const targetMember = message.mentions.members.first() || message.member;
+    const targetKey = `${message.guild.id}-${targetMember.id}`;
+    const userWarns = userWarningsMap.get(targetKey) || [];
+
+    if (userWarns.length === 0) {
+      return message.reply(`✅ **${targetMember.user.tag}** kullanıcısının hiç uyarı kaydı bulunmuyor.`);
+    }
+
+    let warnListText = '';
+    userWarns.forEach((w, i) => {
+      warnListText += `**${i + 1}. Uyarı:** ${w.reason}\n• *Yetkili:* ${w.executor} | *Tarih:* <t:${Math.floor(w.date / 1000)}:R>\n\n`;
+    });
+
+    const warnsEmbed = new EmbedBuilder()
+      .setColor('#FFA500')
+      .setTitle(`📋 ${targetMember.user.tag} • Uyarı Geçmişi`)
+      .setThumbnail(targetMember.user.displayAvatarURL({ dynamic: true }))
+      .setDescription(warnListText)
+      .setFooter({ text: `Toplam Uyarı: ${userWarns.length} • K7e` })
+      .setTimestamp();
+
+    return message.reply({ embeds: [warnsEmbed] });
+  }
+
+  // 🧹 UYARI SİLME (!uyarısil / !uyarisil)
+  if (content.startsWith('!uyarısil') || content.startsWith('!uyarisil')) {
+    if (!isAuthorized(message.member)) {
+      return message.reply('❌ Bu komutu sadece **Yönetici** veya **Moderatör** rolündekiler kullanabilir.');
+    }
+
+    const targetMember = message.mentions.members.first();
+    if (!targetMember) {
+      return message.reply('⚠️ Lütfen uyarıları silinecek kullanıcıyı etiketleyin!\n👉 **Kullanım:** `!uyarısil @kullanıcı`');
+    }
+
+    const targetKey = `${message.guild.id}-${targetMember.id}`;
+    userWarningsMap.delete(targetKey);
+    saveWarnings();
+
+    return message.reply(`🧹 **${targetMember.user.tag}** kullanıcısının tüm uyarıları başarıyla temizlendi.`);
+  }
+
+  // ⚠️ UYARI EKLEME KOMUTU (!uyarı / !uyari / !warn)
+  if (content.startsWith('!uyarı') || content.startsWith('!uyari') || content.startsWith('!warn')) {
+    if (!isAuthorized(message.member)) {
+      return message.reply('❌ Bu komutu sadece **Yönetici** veya **Moderatör** rolündekiler kullanabilir.');
+    }
+
+    const args = message.content.split(/\s+/).slice(1);
+    const targetMember = message.mentions.members.first();
+    if (!targetMember) {
+      return message.reply('⚠️ Lütfen uyarılacak kullanıcıyı etiketleyin!\n👉 **Kullanım:** `!uyarı @kullanıcı [sebep]`');
+    }
+
+    if (targetMember.id === message.author.id) {
+      return message.reply('❌ Kendini uyaramazsın!');
+    }
+
+    const sebep = args.slice(1).join(' ') || 'Sebep belirtilmedi';
+    const targetKey = `${message.guild.id}-${targetMember.id}`;
+    const userWarns = userWarningsMap.get(targetKey) || [];
+
+    const newWarn = {
+      warnNumber: userWarns.length + 1,
+      reason: sebep,
+      executor: message.author.tag,
+      date: Date.now()
+    };
+
+    userWarns.push(newWarn);
+    userWarningsMap.set(targetKey, userWarns);
+    saveWarnings();
+
+    const warnEmbed = new EmbedBuilder()
+      .setColor('#FF9900')
+      .setTitle('⚠️ Kullanıcı Uyarıldı!')
+      .setThumbnail(targetMember.user.displayAvatarURL({ dynamic: true }))
+      .addFields(
+        { name: '👤 Uyarılan', value: `${targetMember} (\`${targetMember.user.tag}\`)`, inline: true },
+        { name: '🛡️ Yetkili', value: `${message.author} (\`${message.author.tag}\`)`, inline: true },
+        { name: '📊 Kaçıncı Uyarısı?', value: `🚨 **${userWarns.length}. Uyarısı**`, inline: true },
+        { name: '📝 Sebep', value: sebep, inline: false }
+      )
+      .setFooter({ text: 'K7e • Moderasyon & Uyarı Sistemi' })
+      .setTimestamp();
+
+    await message.channel.send({ embeds: [warnEmbed] });
+
+    const logChannel = getLogChannel(message.guild);
+    if (logChannel && logChannel.id !== message.channel.id) {
+      logChannel.send({ embeds: [warnEmbed] }).catch(() => {});
+    }
+    return;
+  }
+
+  // 👑 ADMIN & MODERATÖR KONTROL PANELİ (!admin / !yönetim)
+  if (content === '!admin' || content === '!yönetim' || content === '!yonetim') {
+    if (!isAuthorized(message.member)) {
+      return message.reply('❌ Bu komutu sadece **Yönetici** veya **Moderatör** rolündekiler kullanabilir.');
+    }
+
+    const adminEmbed = new EmbedBuilder()
+      .setColor('#ED4245')
+      .setTitle('🛡️ YÖNETİCİ & MODERATÖR KONTROL PANELİ')
+      .setAuthor({ name: `${message.guild.name} Yönetimi`, iconURL: message.guild.iconURL({ dynamic: true }) })
+      .setDescription('Sunucumuzda yetkililere özel moderasyon komutları ve aktif güvenlik modülleri aşağıdadır:')
+      .addFields(
+        {
+          name: '🚨 Ceza & Moderasyon Komutları',
+          value: 
+            '• `!uyarı [@üye] [sebep]` : Kullanıcıyı uyarır (Kaçıncı uyarısı olduğunu gösterir).\n' +
+            '• `!uyarılar [@üye]` : Kullanıcının uyarı geçmişini listeler.\n' +
+            '• `!uyarısil [@üye]` : Kullanıcının tüm uyarı geçmişini sıfırlar.\n' +
+            '• `!sustur [@üye] [dk] [sebep]` : Kullanıcıya timeout (susturma) atar.\n' +
+            '• `!at [@üye]` : Etiketlenen kullanıcıyı sunucudan atar (Kick).\n' +
+            '• `!sil [1-100]` : Belirtilen sayıda mesajı topluca siler.'
+        },
+        {
+          name: '⚙️ Sistem & Eğlence Yönetimi',
+          value: 
+            '• `!xpekle [@üye] [miktar]` : Kullanıcıya XP / Seviye ekler.\n' +
+            '• `!ajanpanel` : Valorant butonlu rastgele ajan panelini kurar.\n' +
+            '• `!valohaber` : En son resmi Valorant yamasını/haberini getirir.\n' +
+            '• `!kurallar` : Kurallar panosunu kanala gönderir.\n' +
+            '• `!admin` : Bu yönetim panelini açar.'
+        },
+        {
+          name: '🛡️ Aktif Denetim & Koruma Modülleri',
+          value: 
+            '• 🟢 **Uyarı Sistemi:** Aktif (Kalıcı kayıtlı, uyarı sayacı).\n' +
+            '• 🟢 **Mod-Log:** Aktif (Mesaj silme/düzenleme, rol, ses, kanal değişimleri).\n' +
+            '• 🟢 **Yapay Zeka:** Açık (Botu etiketleyerek soru sorulabilir).\n' +
+            '• 🟢 **Valorant Otomatik Haber:** Açık (`#valorant-haberleri` kanalında 15 dk bir kontrol).\n' +
+            '• 🟢 **Limitsiz Seviye:** Açık (Kayıtlar kalıcı tutulur).\n' +
+            '• 🟢 **Küfür & Link Koruması:** Açık (Otomatik silme & kademeli ceza).'
+        },
+        {
+          name: '📊 Sunucu & Bot Bilgisi',
+          value: `• **Gecikme (Ping):** ${client.ws.ping}ms\n• **Toplam Üye:** ${message.guild.memberCount}`
+        }
+      )
+      .setFooter({ text: 'K7e • Yönetim Masası' })
+      .setTimestamp();
+
+    return message.reply({ embeds: [adminEmbed] });
+  }
+
   // 📜 GÖRSELDEKİ BİREBİR KURALLAR KOMUTU (!kurallar)
   if (content === '!kurallar') {
     if (!isAuthorized(message.member)) {
@@ -780,7 +946,7 @@ client.on('messageCreate', async (message) => {
     await message.delete().catch(() => {});
 
     const kurallarEmbed = new EmbedBuilder()
-      .setColor('#FFAC33') // Görseldeki altın sarısı çerçeve
+      .setColor('#FFAC33')
       .setAuthor({ 
         name: client.user.username, 
         iconURL: client.user.displayAvatarURL({ dynamic: true }) 
@@ -856,52 +1022,6 @@ client.on('messageCreate', async (message) => {
     );
 
     return message.channel.send({ embeds: [panelEmbed], components: [row] });
-  }
-
-  // 👑 ADMIN KONTROL PANELİ
-  if (content === '!admin' || content === '!yönetim' || content === '!yonetim') {
-    if (!isAuthorized(message.member)) {
-      return message.reply('❌ Bu komutu sadece **Yönetici** veya **Moderatör** rolündekiler kullanabilir.');
-    }
-
-    const adminEmbed = new EmbedBuilder()
-      .setColor('#ED4245')
-      .setTitle('🛡️ YÖNETİCİ & MODERATÖR KONTROL PANELİ')
-      .setAuthor({ name: `${message.guild.name} Yönetimi`, iconURL: message.guild.iconURL({ dynamic: true }) })
-      .setDescription('Sunucumuzda yetkililere özel moderasyon komutları ve aktif güvenlik modülleri aşağıdadır:')
-      .addFields(
-        {
-          name: '🛠️ Moderasyon & Kurulum Komutları',
-          value: 
-            '• `!ajanpanel` : Valorant butonlu rastgele ajan panelini kurar.\n' +
-            '• `!valohaber` : En son Valorant haberini getirir.\n' +
-            '• `!xpekle [@üye] [miktar]` : Kullanıcıya XP ekler.\n' +
-            '• `!sustur [@üye] [dakika] [sebep]` : Kullanıcıya timeout atar.\n' +
-            '• `!sil [1-100]` : Belirtilen sayıda mesajı topluca siler.\n' +
-            '• `!at [@üye]` : Etiketlenen kullanıcıyı sunucudan atar (Kick).\n' +
-            '• `!kurallar` : Kurallar panosunu kanala gönderir.\n' +
-            '• `!admin` : Bu yönetim panelini açar.'
-        },
-        {
-          name: '⚙️ Aktif Denetim & Koruma Modülleri',
-          value: 
-            '• 🟢 **Mod-Log Sistemi:** Aktif (Mesaj silme/düzenleme, rol, ses, kanal, isim değişimleri).\n' +
-            '• 🟢 **Yapay Zeka:** Açık (Botu etiketleyerek soru sorulabilir).\n' +
-            '• 🟢 **Valorant Otomatik Haber:** Açık (`#valorant-haberleri` kanalında 15 dk bir kontrol).\n' +
-            '• 🟢 **Valorant Ajan Seçici:** Açık (`!ajanpanel`).\n' +
-            '• 🟢 **Limitsiz Seviye Sistemi:** Açık (Veriler anında diske kaydedilir).\n' +
-            '• 🟢 **Küfür Filtresi:** Açık (Yetkililer hariç mesajları siler).\n' +
-            '• 🟢 **Reklam / Link Engeli:** Açık (5 aşamalı ceza sistemi).'
-        },
-        {
-          name: '📊 Sunucu & Bot Bilgisi',
-          value: `• **Gecikme (Ping):** ${client.ws.ping}ms\n• **Toplam Üye:** ${message.guild.memberCount}`
-        }
-      )
-      .setFooter({ text: 'K7e • Yönetim Masası' })
-      .setTimestamp();
-
-    return message.reply({ embeds: [adminEmbed] });
   }
 
   // ⭐ YÖNETİCİ XP EKLEME KOMUTU (!xpekle / !xpver)
