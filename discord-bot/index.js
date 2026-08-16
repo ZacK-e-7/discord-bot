@@ -165,7 +165,9 @@ function getWelcomeChannel(guild) {
   return guild.channels.cache.find(c => 
     c.name.includes('hoşgeldin') || c.name.includes('hosgeldin') || 
     c.name.includes('hoşgeldiniz') || c.name.includes('hosgeldiniz') || 
-    c.name.includes('welcome') || c.name.includes('giriş-çıkış')
+    c.name.includes('welcome') || c.name.includes('giriş-çıkış') ||
+    c.name.includes('giris-cikis') || c.name.includes('giriş') ||
+    c.name.includes('çıkış') || c.name.includes('cikis')
   );
 }
 
@@ -278,9 +280,55 @@ client.once('ready', async () => {
   }, 15 * 60 * 1000);
 });
 
+// ================= HOŞ GELDİN & HOŞÇAKAL (GİRİŞ-ÇIKIŞ SİSTEMİ) ================= //
+
+// 🟢 Sunucuya Biri Katıldığında
+client.on('guildMemberAdd', async (member) => {
+  try {
+    const autoRole = member.guild.roles.cache.find(role => 
+      ['kayıtlı üye', 'kayitli uye', 'üye', 'uye'].some(k => role.name.toLowerCase().includes(k))
+    );
+    if (autoRole) await member.roles.add(autoRole).catch(() => {});
+
+    const welcomeChannel = getWelcomeChannel(member.guild);
+    if (welcomeChannel) {
+      const welcomeEmbed = new EmbedBuilder()
+        .setColor('#57F287')
+        .setTitle(`🎉 Sunucumuza Hoş Geldin ${member.user?.username || member.displayName}!`)
+        .setDescription(`Aramıza katıldığın için çok mutluyuz ${member}! 👋\n🏰 **${member.guild.name}** sunucusunda seninle birlikte toplam **${member.guild.memberCount}** kişi olduk!`)
+        .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
+        .setFooter({ text: `${member.guild.name} • Hoş Geldin` })
+        .setTimestamp();
+
+      welcomeChannel.send({ content: `👋 ${member}, aramıza hoş geldin!`, embeds: [welcomeEmbed] }).catch(() => {});
+    }
+  } catch (e) {}
+});
+
+// 🔴 Sunucudan Biri Ayrıldığında (Hoşçakal)
+client.on('guildMemberRemove', (member) => {
+  try {
+    const welcomeChannel = getWelcomeChannel(member.guild);
+    if (welcomeChannel) {
+      const userName = member.user?.username || member.displayName || 'Bir üye';
+      const userTag = member.user?.tag || userName;
+
+      const leaveEmbed = new EmbedBuilder()
+        .setColor('#ED4245')
+        .setTitle(`📤 Hoşça Kal ${userName}...`)
+        .setDescription(`**${userTag}** sunucumuzdan ayrıldı. Seni özleyeceğiz! 🥺\n\n👥 Kalan toplam üye sayısı: **${member.guild.memberCount}**`)
+        .setThumbnail(member.user ? member.user.displayAvatarURL({ dynamic: true }) : member.guild.iconURL({ dynamic: true }))
+        .setFooter({ text: `${member.guild.name} • Görüşmek Üzere` })
+        .setTimestamp();
+
+      welcomeChannel.send({ content: `🚪 **${userName}** sunucudan ayrıldı. Hoşça kal!`, embeds: [leaveEmbed] }).catch(() => {});
+    }
+  } catch (e) {}
+});
+
 // ================= 🔍 HATASIZ GELİŞMİŞ MOD-LOG SİSTEMİ ================= //
 
-// 1. MESAJ SİLİNDİ LOGU (Silen Kişi Tespiti ile)
+// 1. MESAJ SİLİNDİ LOGU
 client.on('messageDelete', async (message) => {
   try {
     if (!message.guild || message.author?.bot) return;
@@ -290,7 +338,6 @@ client.on('messageDelete', async (message) => {
     let deleter = message.author ? `${message.author} *(Kullanıcının Kendisi)*` : '*Kullanıcının Kendisi*';
 
     try {
-      // Discord'un denetim kaydına yazmasını 600ms bekle
       await new Promise(resolve => setTimeout(resolve, 600));
       const fetchedLogs = await message.guild.fetchAuditLogs({
         limit: 1,
@@ -629,43 +676,6 @@ client.on('guildBanRemove', async (ban) => {
   } catch (e) {}
 });
 
-// ================= HOŞ GELDİN & OTOMATİK ROL ================= //
-
-client.on('guildMemberAdd', async (member) => {
-  try {
-    const autoRole = member.guild.roles.cache.find(role => 
-      ['kayıtlı üye', 'kayitli uye', 'üye', 'uye'].some(k => role.name.toLowerCase().includes(k))
-    );
-    if (autoRole) await member.roles.add(autoRole).catch(() => {});
-
-    const welcomeChannel = getWelcomeChannel(member.guild);
-    if (welcomeChannel) {
-      const welcomeEmbed = new EmbedBuilder()
-        .setColor('#57F287')
-        .setTitle(`🎉 Sunucumuza Hoş Geldin ${member.user.username}!`)
-        .setDescription(`Aramıza katıldığın için mutluyuz ${member}! 👋\n🏰 **${member.guild.name}** sunucusunda seninle birlikte **${member.guild.memberCount}** kişi olduk!`)
-        .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
-        .setTimestamp();
-      welcomeChannel.send({ embeds: [welcomeEmbed] }).catch(() => {});
-    }
-  } catch (e) {}
-});
-
-client.on('guildMemberRemove', (member) => {
-  try {
-    const welcomeChannel = getWelcomeChannel(member.guild);
-    if (welcomeChannel) {
-      const leaveEmbed = new EmbedBuilder()
-        .setColor('#ED4245')
-        .setTitle(`📤 Görüşmek Üzere ${member.user.username}...`)
-        .setDescription(`${member.user.tag} aramızdan ayrıldı. Kalan üye sayısı: **${member.guild.memberCount}**`)
-        .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
-        .setTimestamp();
-      welcomeChannel.send({ embeds: [leaveEmbed] }).catch(() => {});
-    }
-  } catch (e) {}
-});
-
 // ================= BUTON ETKİLEŞİMİ (VALORANT AJAN SEÇİCİ) ================= //
 
 client.on('interactionCreate', async (interaction) => {
@@ -829,7 +839,7 @@ client.on('messageCreate', async (message) => {
     const userWarns = userWarningsMap.get(targetKey) || [];
 
     if (userWarns.length === 0) {
-      return message.reply(`✅ **${targetMember.user.tag}** kullanıcısının hiç uyarı kaydı bulunmuyor.`);
+      return message.reply(`✅ **${targetMember.user?.tag || targetMember.displayName}** kullanıcısının hiç uyarı kaydı bulunmuyor.`);
     }
 
     let warnListText = '';
@@ -839,7 +849,7 @@ client.on('messageCreate', async (message) => {
 
     const warnsEmbed = new EmbedBuilder()
       .setColor('#FFA500')
-      .setTitle(`📋 ${targetMember.user.tag} • Uyarı Geçmişi`)
+      .setTitle(`📋 ${targetMember.user?.tag || targetMember.displayName} • Uyarı Geçmişi`)
       .setThumbnail(targetMember.user.displayAvatarURL({ dynamic: true }))
       .setDescription(warnListText)
       .setFooter({ text: `Toplam Uyarı: ${userWarns.length} • K7e` })
@@ -863,7 +873,7 @@ client.on('messageCreate', async (message) => {
     userWarningsMap.delete(targetKey);
     saveWarnings();
 
-    return message.reply(`🧹 **${targetMember.user.tag}** kullanıcısının tüm uyarıları başarıyla temizlendi.`);
+    return message.reply(`🧹 **${targetMember.user?.tag || targetMember.displayName}** kullanıcısının tüm uyarıları başarıyla temizlendi.`);
   }
 
   // ⚠️ UYARI EKLEME KOMUTU (!uyarı / !uyari / !warn)
@@ -902,7 +912,7 @@ client.on('messageCreate', async (message) => {
       .setTitle('⚠️ Kullanıcı Uyarıldı!')
       .setThumbnail(targetMember.user.displayAvatarURL({ dynamic: true }))
       .addFields(
-        { name: '👤 Uyarılan', value: `${targetMember} (\`${targetMember.user.tag}\`)`, inline: true },
+        { name: '👤 Uyarılan', value: `${targetMember} (\`${targetMember.user?.tag || targetMember.displayName}\`)`, inline: true },
         { name: '🛡️ Yetkili', value: `${message.author} (\`${message.author.tag}\`)`, inline: true },
         { name: '📊 Kaçıncı Uyarısı?', value: `🚨 **${userWarns.length}. Uyarısı**`, inline: true },
         { name: '📝 Sebep', value: sebep, inline: false }
@@ -953,6 +963,7 @@ client.on('messageCreate', async (message) => {
         {
           name: '🛡️ Aktif Denetim & Koruma Modülleri',
           value: 
+            '• 🟢 **Karşılama & Hoşça Kal:** Aktif (`#hoşgeldiniz` kanalında görsel kartlar).\n' +
             '• 🟢 **Uyarı Sistemi:** Aktif (Kalıcı kayıtlı, uyarı sayacı).\n' +
             '• 🟢 **Mod-Log:** Aktif (Mesaj silen/düzenleyen, rol, ses, kanal değişimleri).\n' +
             '• 🟢 **Yapay Zeka:** Açık (Botu etiketleyerek soru sorulabilir).\n' +
@@ -1131,7 +1142,7 @@ client.on('messageCreate', async (message) => {
 
     try {
       await member.timeout(dakika * 60 * 1000, `${message.author.tag} tarafından: ${sebep}`);
-      return message.reply(`⏰ **${member.user.tag}** kullanıcısı **${dakika} dakika** susturuldu!\n📝 **Sebep:** ${sebep}`);
+      return message.reply(`⏰ **${member.user?.tag || member.displayName}** kullanıcısı **${dakika} dakika** susturuldu!\n📝 **Sebep:** ${sebep}`);
     } catch (err) {
       return message.reply('❌ Kullanıcı susturulurken bir hata oluştu.');
     }
@@ -1268,7 +1279,7 @@ client.on('messageCreate', async (message) => {
     if (!member) return message.reply('⚠️ Kullanıcı etiketleyin!');
     if (!member.kickable) return message.reply('❌ Bu kullanıcıyı atamam.');
     await member.kick();
-    return message.reply(`Modern **${member.user.tag}** sunucudan atıldı.`);
+    return message.reply(`Modern **${member.user?.tag || member.displayName}** sunucudan atıldı.`);
   }
 });
 
