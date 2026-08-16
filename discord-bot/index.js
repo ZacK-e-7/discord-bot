@@ -280,11 +280,35 @@ client.once('ready', async () => {
 
 // ================= 🔍 HATASIZ GELİŞMİŞ MOD-LOG SİSTEMİ ================= //
 
+// 1. MESAJ SİLİNDİ LOGU (Silen Kişi Tespiti ile)
 client.on('messageDelete', async (message) => {
   try {
     if (!message.guild || message.author?.bot) return;
     const logChannel = getLogChannel(message.guild);
     if (!logChannel || logChannel.id === message.channel?.id) return;
+
+    let deleter = message.author ? `${message.author} *(Kullanıcının Kendisi)*` : '*Kullanıcının Kendisi*';
+
+    try {
+      // Discord'un denetim kaydına yazmasını 600ms bekle
+      await new Promise(resolve => setTimeout(resolve, 600));
+      const fetchedLogs = await message.guild.fetchAuditLogs({
+        limit: 1,
+        type: AuditLogEvent.MessageDelete,
+      });
+      const deletionLog = fetchedLogs.entries.first();
+
+      if (deletionLog) {
+        const { executor, target, createdTimestamp, extra } = deletionLog;
+        const isRecent = (Date.now() - createdTimestamp) < 5000;
+        const isTargetMatch = message.author ? target?.id === message.author.id : true;
+        const isChannelMatch = extra?.channel?.id === message.channel?.id;
+
+        if (isRecent && isTargetMatch && isChannelMatch && executor) {
+          deleter = `${executor} (\`${executor.tag}\`)`;
+        }
+      }
+    } catch (auditErr) {}
 
     const authorText = message.author 
       ? `${message.author} (\`${message.author.tag}\`)` 
@@ -295,6 +319,7 @@ client.on('messageDelete', async (message) => {
       .setTitle('🗑️ Bir Mesaj Silindi')
       .addFields(
         { name: '👤 Yazar', value: authorText, inline: true },
+        { name: '🛡️ Silen Kişi', value: deleter, inline: true },
         { name: '📍 Kanal', value: message.channel ? `${message.channel}` : 'Bilinmeyen Kanal', inline: true },
         { name: '📝 Silinen İçerik', value: message.content ? (message.content.length > 1000 ? message.content.substring(0, 1000) + '...' : message.content) : '*İçerik okunamadı veya medya/fotoğraf içeriyordu.*' }
       )
@@ -307,6 +332,7 @@ client.on('messageDelete', async (message) => {
   }
 });
 
+// 2. MESAJ DÜZENLENDİ LOGU
 client.on('messageUpdate', async (oldMessage, newMessage) => {
   try {
     if (!oldMessage.guild || oldMessage.author?.bot) return;
@@ -336,6 +362,7 @@ client.on('messageUpdate', async (oldMessage, newMessage) => {
   }
 });
 
+// 3. KULLANICI GÜNCELLEMELERİ (Rol, Nickname, Timeout)
 client.on('guildMemberUpdate', async (oldMember, newMember) => {
   try {
     const logChannel = getLogChannel(newMember.guild);
@@ -419,6 +446,7 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
   }
 });
 
+// 4. KANAL OLUŞTURULDU LOGU
 client.on('channelCreate', async (channel) => {
   try {
     if (!channel.guild) return;
@@ -439,6 +467,7 @@ client.on('channelCreate', async (channel) => {
   } catch (e) {}
 });
 
+// 5. KANAL SİLİNDİ LOGU
 client.on('channelDelete', async (channel) => {
   try {
     if (!channel.guild) return;
@@ -456,6 +485,7 @@ client.on('channelDelete', async (channel) => {
   } catch (e) {}
 });
 
+// 6. ROL OLUŞTURULDU / SİLİNDİ LOGU
 client.on('roleCreate', async (role) => {
   try {
     const logChannel = getLogChannel(role.guild);
@@ -488,6 +518,7 @@ client.on('roleDelete', async (role) => {
   } catch (e) {}
 });
 
+// 7. SUNUCU İSMİ DEĞİŞTİRİLDİ
 client.on('guildUpdate', async (oldGuild, newGuild) => {
   try {
     const logChannel = getLogChannel(newGuild);
@@ -509,6 +540,7 @@ client.on('guildUpdate', async (oldGuild, newGuild) => {
   } catch (e) {}
 });
 
+// 8. SES KANALI HAREKETLERİ
 client.on('voiceStateUpdate', async (oldState, newState) => {
   try {
     const logChannel = getLogChannel(newState.guild || oldState.guild);
@@ -549,6 +581,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
   } catch (e) {}
 });
 
+// 9. BAN VE UNBAN LOGLARI
 client.on('guildBanAdd', async (ban) => {
   try {
     const logChannel = getLogChannel(ban.guild);
@@ -921,7 +954,7 @@ client.on('messageCreate', async (message) => {
           name: '🛡️ Aktif Denetim & Koruma Modülleri',
           value: 
             '• 🟢 **Uyarı Sistemi:** Aktif (Kalıcı kayıtlı, uyarı sayacı).\n' +
-            '• 🟢 **Mod-Log:** Aktif (Mesaj silme/düzenleme, rol, ses, kanal değişimleri).\n' +
+            '• 🟢 **Mod-Log:** Aktif (Mesaj silen/düzenleyen, rol, ses, kanal değişimleri).\n' +
             '• 🟢 **Yapay Zeka:** Açık (Botu etiketleyerek soru sorulabilir).\n' +
             '• 🟢 **Valorant Otomatik Haber:** Açık (`#valorant-haberleri` kanalında 15 dk bir kontrol).\n' +
             '• 🟢 **Limitsiz Seviye:** Açık (Kayıtlar kalıcı tutulur).\n' +
