@@ -82,46 +82,6 @@ const valorantAgents = [
   { name: 'Vyse', role: 'Gözcü 🌹', color: '#800020', desc: 'Sıvı metal gülleri ve duvar tuzaklarıyla rakipleri silahsız bırak!' }
 ];
 
-// ================= KALICI SEVİYE & XP SİSTEMİ ================= //
-const DATA_FILE = path.join(__dirname, 'levels.json');
-
-function loadLevels() {
-  try {
-    if (fs.existsSync(DATA_FILE)) {
-      const data = fs.readFileSync(DATA_FILE, 'utf8');
-      const parsed = JSON.parse(data);
-      return new Map(Object.entries(parsed));
-    }
-  } catch (err) {
-    console.error('Kayıtlı seviye verileri okunurken hata oluştu:', err);
-  }
-  return new Map();
-}
-
-function saveLevels() {
-  try {
-    const obj = Object.fromEntries(userLevelMap);
-    fs.writeFileSync(DATA_FILE, JSON.stringify(obj, null, 2), 'utf8');
-  } catch (err) {
-    console.error('Seviye verileri kaydedilirken hata oluştu:', err);
-  }
-}
-
-const userLevelMap = loadLevels();
-
-function getNeededXP(level) {
-  return Math.floor(30 * Math.pow(level, 2) + 20 * level);
-}
-
-function createProgressBar(currentXP, neededXP) {
-  const percentage = Math.min(1, Math.max(0, currentXP / neededXP));
-  const totalBars = 10;
-  const filledBars = Math.round(percentage * totalBars);
-  const emptyBars = totalBars - filledBars;
-  const bar = '🟩'.repeat(filledBars) + '⬛'.repeat(emptyBars);
-  return `${bar} (%${Math.floor(percentage * 100)})`;
-}
-
 // ================= KALICI UYARI SİSTEMİ ================= //
 const WARN_FILE = path.join(__dirname, 'warnings.json');
 
@@ -168,17 +128,6 @@ function getWelcomeChannel(guild) {
     c.name.includes('welcome') || c.name.includes('giriş-çıkış') ||
     c.name.includes('giris-cikis') || c.name.includes('giriş') ||
     c.name.includes('çıkış') || c.name.includes('cikis')
-  );
-}
-
-function getLevelChannel(guild) {
-  if (!guild) return null;
-  return guild.channels.cache.find(c => 
-    c.name.includes('level-bilgi') || 
-    c.name.includes('levelbilgi') || 
-    c.name.includes('seviye-bilgi') || 
-    c.name.includes('seviyebilgi') || 
-    c.name.includes('level-bilgisi')
   );
 }
 
@@ -231,7 +180,6 @@ async function fetchLatestValoNews() {
 
 client.once('ready', async () => {
   console.log(`🤖 Bot aktif! ${client.user.tag} olarak giriş yapıldı.`);
-  console.log(`💾 Toplam ${userLevelMap.size} kullanıcının seviye verisi yüklendi.`);
   console.log(`⚠️ Toplam ${userWarningsMap.size} kullanıcının uyarı kaydı yüklendi.`);
 
   const initialNews = await fetchLatestValoNews();
@@ -280,9 +228,8 @@ client.once('ready', async () => {
   }, 15 * 60 * 1000);
 });
 
-// ================= HOŞ GELDİN & HOŞÇAKAL (GİRİŞ-ÇIKIŞ SİSTEMİ) ================= //
+// ================= GİRİŞ - ÇIKIŞ SİSTEMİ ================= //
 
-// 🟢 Sunucuya Biri Katıldığında
 client.on('guildMemberAdd', async (member) => {
   try {
     const autoRole = member.guild.roles.cache.find(role => 
@@ -305,7 +252,6 @@ client.on('guildMemberAdd', async (member) => {
   } catch (e) {}
 });
 
-// 🔴 Sunucudan Biri Ayrıldığında (Hoşçakal)
 client.on('guildMemberRemove', (member) => {
   try {
     const welcomeChannel = getWelcomeChannel(member.guild);
@@ -326,9 +272,8 @@ client.on('guildMemberRemove', (member) => {
   } catch (e) {}
 });
 
-// ================= 🔍 HATASIZ GELİŞMİŞ MOD-LOG SİSTEMİ ================= //
+// ================= MOD-LOG SİSTEMİ ================= //
 
-// 1. MESAJ SİLİNDİ LOGU
 client.on('messageDelete', async (message) => {
   try {
     if (!message.guild || message.author?.bot) return;
@@ -379,7 +324,6 @@ client.on('messageDelete', async (message) => {
   }
 });
 
-// 2. MESAJ DÜZENLENDİ LOGU
 client.on('messageUpdate', async (oldMessage, newMessage) => {
   try {
     if (!oldMessage.guild || oldMessage.author?.bot) return;
@@ -409,7 +353,6 @@ client.on('messageUpdate', async (oldMessage, newMessage) => {
   }
 });
 
-// 3. KULLANICI GÜNCELLEMELERİ (Rol, Nickname, Timeout)
 client.on('guildMemberUpdate', async (oldMember, newMember) => {
   try {
     const logChannel = getLogChannel(newMember.guild);
@@ -493,7 +436,6 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
   }
 });
 
-// 4. KANAL OLUŞTURULDU LOGU
 client.on('channelCreate', async (channel) => {
   try {
     if (!channel.guild) return;
@@ -514,7 +456,6 @@ client.on('channelCreate', async (channel) => {
   } catch (e) {}
 });
 
-// 5. KANAL SİLİNDİ LOGU
 client.on('channelDelete', async (channel) => {
   try {
     if (!channel.guild) return;
@@ -532,7 +473,6 @@ client.on('channelDelete', async (channel) => {
   } catch (e) {}
 });
 
-// 6. ROL OLUŞTURULDU / SİLİNDİ LOGU
 client.on('roleCreate', async (role) => {
   try {
     const logChannel = getLogChannel(role.guild);
@@ -565,7 +505,6 @@ client.on('roleDelete', async (role) => {
   } catch (e) {}
 });
 
-// 7. SUNUCU İSMİ DEĞİŞTİRİLDİ
 client.on('guildUpdate', async (oldGuild, newGuild) => {
   try {
     const logChannel = getLogChannel(newGuild);
@@ -587,7 +526,6 @@ client.on('guildUpdate', async (oldGuild, newGuild) => {
   } catch (e) {}
 });
 
-// 8. SES KANALI HAREKETLERİ
 client.on('voiceStateUpdate', async (oldState, newState) => {
   try {
     const logChannel = getLogChannel(newState.guild || oldState.guild);
@@ -628,7 +566,6 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
   } catch (e) {}
 });
 
-// 9. BAN VE UNBAN LOGLARI
 client.on('guildBanAdd', async (ban) => {
   try {
     const logChannel = getLogChannel(ban.guild);
@@ -676,7 +613,7 @@ client.on('guildBanRemove', async (ban) => {
   } catch (e) {}
 });
 
-// ================= BUTON ETKİLEŞİMİ (VALORANT AJAN SEÇİCİ) ================= //
+// ================= BUTON ETKİLEŞİMİ ================= //
 
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isButton()) return;
@@ -699,7 +636,7 @@ client.on('interactionCreate', async (interaction) => {
   }
 });
 
-// ================= MESAJ DİNLEYİCİ (KORUMA, AI, XP VE KOMUTLAR) ================= //
+// ================= MESAJ DİNLEYİCİ (KORUMA, AI VE KOMUTLAR) ================= //
 
 client.on('messageCreate', async (message) => {
   if (message.author.bot || !message.guild) return;
@@ -795,40 +732,9 @@ client.on('messageCreate', async (message) => {
     }
   }
 
-  // 4. SOHBET XP VE SEVİYE SİSTEMİ
-  if (!content.startsWith('!')) {
-    let userData = userLevelMap.get(userKey) || { xp: 0, level: 1, lastXpTime: 0 };
-    const now = Date.now();
-
-    if (now - userData.lastXpTime >= 5000) {
-      const earnedXP = Math.floor(Math.random() * 16) + 25;
-      userData.xp += earnedXP;
-      userData.lastXpTime = now;
-
-      const neededXP = getNeededXP(userData.level);
-
-      if (userData.xp >= neededXP) {
-        userData.level += 1;
-
-        const levelUpEmbed = new EmbedBuilder()
-          .setColor('#57F287')
-          .setTitle('🎉 SEVİYE ATLADIN!')
-          .setDescription(`Tebrikler ${message.author}! Sohbet ettikçe güçleniyorsun! 🚀\n\n⭐ Yeni Seviyen: **${userData.level}**`)
-          .setThumbnail(message.author.displayAvatarURL({ dynamic: true }))
-          .setTimestamp();
-
-        const levelChannel = getLevelChannel(message.guild) || message.channel;
-        levelChannel.send({ embeds: [levelUpEmbed] }).catch(() => {});
-      }
-
-      userLevelMap.set(userKey, userData);
-      saveLevels();
-    }
-  }
-
   // ================= KOMUTLAR ================= //
 
-  // ⚠️ UYARI LİSTESİ (!uyarılar / !uyarilar)
+  // ⚠️ UYARI LİSTESİ (!uyarılar)
   if (content.startsWith('!uyarılar') || content.startsWith('!uyarilar')) {
     if (!isAuthorized(message.member)) {
       return message.reply('❌ Bu komutu sadece **Yönetici** veya **Moderatör** rolündekiler kullanabilir.');
@@ -858,7 +764,7 @@ client.on('messageCreate', async (message) => {
     return message.reply({ embeds: [warnsEmbed] });
   }
 
-  // 🧹 UYARI SİLME (!uyarısil / !uyarisil)
+  // 🧹 UYARI SİLME (!uyarısil)
   if (content.startsWith('!uyarısil') || content.startsWith('!uyarisil')) {
     if (!isAuthorized(message.member)) {
       return message.reply('❌ Bu komutu sadece **Yönetici** veya **Moderatör** rolündekiler kullanabilir.');
@@ -876,7 +782,7 @@ client.on('messageCreate', async (message) => {
     return message.reply(`🧹 **${targetMember.user?.tag || targetMember.displayName}** kullanıcısının tüm uyarıları başarıyla temizlendi.`);
   }
 
-  // ⚠️ UYARI EKLEME KOMUTU (!uyarı / !uyari / !warn)
+  // ⚠️ UYARI EKLEME KOMUTU (!uyarı)
   if (content.startsWith('!uyarı') || content.startsWith('!uyari') || content.startsWith('!warn')) {
     if (!isAuthorized(message.member)) {
       return message.reply('❌ Bu komutu sadece **Yönetici** veya **Moderatör** rolündekiler kullanabilir.');
@@ -929,7 +835,7 @@ client.on('messageCreate', async (message) => {
     return;
   }
 
-  // 👑 ADMIN & MODERATÖR KONTROL PANELİ (!admin / !yönetim)
+  // 👑 ADMIN & MODERATÖR KONTROL PANELİ (!admin)
   if (content === '!admin' || content === '!yönetim' || content === '!yonetim') {
     if (!isAuthorized(message.member)) {
       return message.reply('❌ Bu komutu sadece **Yönetici** veya **Moderatör** rolündekiler kullanabilir.');
@@ -954,7 +860,6 @@ client.on('messageCreate', async (message) => {
         {
           name: '⚙️ Sistem & Eğlence Yönetimi',
           value: 
-            '• `!xpekle [@üye] [miktar]` : Kullanıcıya XP / Seviye ekler.\n' +
             '• `!ajanpanel` : Valorant butonlu rastgele ajan panelini kurar.\n' +
             '• `!valohaber` : En son resmi Valorant yamasını/haberini getirir.\n' +
             '• `!kurallar` : Kurallar panosunu kanala gönderir.\n' +
@@ -968,7 +873,6 @@ client.on('messageCreate', async (message) => {
             '• 🟢 **Mod-Log:** Aktif (Mesaj silen/düzenleyen, rol, ses, kanal değişimleri).\n' +
             '• 🟢 **Yapay Zeka:** Açık (Botu etiketleyerek soru sorulabilir).\n' +
             '• 🟢 **Valorant Otomatik Haber:** Açık (`#valorant-haberleri` kanalında 15 dk bir kontrol).\n' +
-            '• 🟢 **Limitsiz Seviye:** Açık (Kayıtlar kalıcı tutulur).\n' +
             '• 🟢 **Küfür & Link Koruması:** Açık (Otomatik silme & kademeli ceza).'
         },
         {
@@ -1068,57 +972,6 @@ client.on('messageCreate', async (message) => {
     return message.channel.send({ embeds: [panelEmbed], components: [row] });
   }
 
-  // ⭐ YÖNETİCİ XP EKLEME KOMUTU (!xpekle / !xpver)
-  if (content.startsWith('!xpekle') || content.startsWith('!xp-ekle') || content.startsWith('!xpver') || content.startsWith('!xp-ver')) {
-    if (!isAuthorized(message.member)) {
-      return message.reply('❌ Bu komutu sadece **Yönetici** veya **Moderatör** rolündekiler kullanabilir.');
-    }
-
-    const args = message.content.split(/\s+/).slice(1);
-    const targetMember = message.mentions.members.first();
-    if (!targetMember) {
-      return message.reply('⚠️ Lütfen XP verilecek kullanıcıyı etiketleyin!\n👉 **Kullanım:** `!xpekle @kullanıcı [miktar]`');
-    }
-
-    const amount = parseInt(args[1]);
-    if (isNaN(amount) || amount <= 0) {
-      return message.reply('⚠️ Lütfen geçerli pozitif bir XP miktarı girin (Örn: `!xpekle @kullanıcı 100`)!');
-    }
-
-    const targetKey = `${message.guild.id}-${targetMember.id}`;
-    let userData = userLevelMap.get(targetKey) || { xp: 0, level: 1, lastXpTime: 0 };
-
-    userData.xp += amount;
-    const oldLevel = userData.level;
-
-    while (userData.xp >= getNeededXP(userData.level)) {
-      userData.level += 1;
-    }
-
-    userLevelMap.set(targetKey, userData);
-    saveLevels();
-
-    let responseMsg = `⭐ ${targetMember} kullanıcısına başarıyla **+${amount} XP** eklendi! (Toplam XP: **${userData.xp}**)`;
-
-    if (userData.level > oldLevel) {
-      responseMsg += `\n🎉 **Tebrikler!** Yeni Seviyesi: **${userData.level}** 🚀`;
-
-      const levelChannel = getLevelChannel(message.guild);
-      if (levelChannel) {
-        const levelUpEmbed = new EmbedBuilder()
-          .setColor('#57F287')
-          .setTitle('🎉 SEVİYE ATLADIN!')
-          .setDescription(`Tebrikler ${targetMember}! Yönetici tarafından verilen XP ile seviye atladın! 🚀\n\n⭐ Yeni Seviyen: **${userData.level}**`)
-          .setThumbnail(targetMember.user.displayAvatarURL({ dynamic: true }))
-          .setTimestamp();
-
-        levelChannel.send({ embeds: [levelUpEmbed] }).catch(() => {});
-      }
-    }
-
-    return message.reply(responseMsg);
-  }
-
   // ⏰ SUSTURMA / TIMEOUT KOMUTU
   if (content.startsWith('!sustur') || content.startsWith('!timeout')) {
     if (!isAuthorized(message.member)) return message.reply('❌ Bu komutu kullanmak için yetkiniz yok.');
@@ -1148,73 +1001,6 @@ client.on('messageCreate', async (message) => {
     }
   }
 
-  // 📈 SEVİYE / RANK KOMUTLARI
-  if (
-    content === '!seviye' || content === '!level' || content === '!rank' || content.startsWith('!seviye ') || content.startsWith('!level ') || content.startsWith('!rank ') ||
-    content === '!liderlik' || content === '!top'
-  ) {
-    const channelName = message.channel.name.toLowerCase();
-    const isLevelChannel = ['level-bilgi', 'levelbilgi', 'seviye-bilgi', 'seviyebilgi', 'level-bilgisi'].some(k => channelName.includes(k));
-
-    if (!isLevelChannel) {
-      const warnMsg = await message.reply('⚠️ Seviye komutlarını sadece **#level-bilgi** kanalında kullanabilirsin!');
-      setTimeout(() => warnMsg.delete().catch(() => {}), 5000);
-      return;
-    }
-
-    if (content === '!seviye' || content === '!level' || content === '!rank' || content.startsWith('!seviye ') || content.startsWith('!level ') || content.startsWith('!rank ')) {
-      const targetUser = message.mentions.users.first() || message.author;
-      const targetKey = `${message.guild.id}-${targetUser.id}`;
-      const userData = userLevelMap.get(targetKey) || { xp: 0, level: 1 };
-      const neededXP = getNeededXP(userData.level);
-
-      const levelEmbed = new EmbedBuilder()
-        .setColor('#5865F2')
-        .setAuthor({ name: `${targetUser.username} • Seviye Kartı`, iconURL: targetUser.displayAvatarURL({ dynamic: true }) })
-        .setThumbnail(targetUser.displayAvatarURL({ dynamic: true, size: 256 }))
-        .addFields(
-          { name: '🏆 Seviye', value: `**${userData.level}**`, inline: true },
-          { name: '⭐ Toplam XP', value: `**${userData.xp}** / ${neededXP} XP`, inline: true },
-          { name: '📊 İlerleme Durumu', value: createProgressBar(userData.xp, neededXP), inline: false }
-        )
-        .setFooter({ text: 'K7e • Sohbet ederek sınırsız XP kazanabilirsiniz!' })
-        .setTimestamp();
-
-      return message.reply({ embeds: [levelEmbed] });
-    }
-
-    if (content === '!liderlik' || content === '!top') {
-      const guildUsers = [];
-      userLevelMap.forEach((data, key) => {
-        if (key.startsWith(`${message.guild.id}-`)) {
-          guildUsers.push({ userId: key.split('-')[1], level: data.level, xp: data.xp });
-        }
-      });
-
-      guildUsers.sort((a, b) => b.level - a.level || b.xp - a.xp);
-      const top10 = guildUsers.slice(0, 10);
-      let description = '';
-
-      if (top10.length === 0) {
-        description = 'Henüz kimsede XP yok. Sohbet etmeye başla!';
-      } else {
-        top10.forEach((user, index) => {
-          const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '👤';
-          description += `${medal} **${index + 1}.** <@${user.userId}> — **Seviye ${user.level}** (${user.xp} XP)\n`;
-        });
-      }
-
-      const leaderboardEmbed = new EmbedBuilder()
-        .setColor('#FFD700')
-        .setTitle(`🏆 ${message.guild.name} • Seviye Liderlik Tablosu`)
-        .setDescription(description)
-        .setFooter({ text: 'K7e • Liderlik Sıralaması' })
-        .setTimestamp();
-
-      return message.reply({ embeds: [leaderboardEmbed] });
-    }
-  }
-
   // Diğer Genel Komutlar
   if (['sa', 's.a', 'selam'].includes(content)) {
     return message.reply(`Aleykümselam ${message.author}! Hoş geldin 👋`);
@@ -1234,7 +1020,6 @@ client.on('messageCreate', async (message) => {
       .addFields(
         { name: '🧠 Yapay Zeka', value: 'Beni etiketleyip istediğin soruyu sorabilirsin! (Örn: `@Boom Bot nasılsın?`)' },
         { name: '🎯 Valorant Özellikleri', value: '• `#rastgele-ajan` kanalında butonla rastgele ajan seçimi.\n• `!valohaber` - En son Valorant yamasını/haberini gösterir.\n• Otomatik haberler `#valorant-haberleri` kanalına düşer.' },
-        { name: '⭐ Seviye Sistemi (#level-bilgi)', value: '`!seviye` - Seviye kartınızı gösterir.\n`!liderlik` - Sunucu sıralamasını gösterir.' },
         { name: '🛡️ Otomatik Güvenlik & Denetim', value: '• **Mod-Log:** Sunucudaki tüm değişimler kaydedilir.\n• **Küfür Engeli:** Otomatik silinir.\n• **Link Engeli:** Kademeli uyarı/timeout/ban.' },
         { name: '🎮 Eğlence / Bilgi', value: '`!zar`, `!yazıtura`, `!ping`, `!avatar`, `!sunucu`' }
       )
